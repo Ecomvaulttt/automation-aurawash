@@ -111,7 +111,9 @@ De app moet minimaal dit ondersteunen:
 
 - Beschikbaar geld aanpassen, verwijderen, toevoegen.
 - Salarissen aanpassen.
-- Medewerkers toevoegen.
+- Medewerkers toevoegen, bewerken, uit dienst zetten en verwijderen.
+- Medewerker verwijderen moet ook gekoppelde loonstroken van die medewerker opruimen.
+- `Uit dienst` medewerkers blijven zichtbaar in medewerkerbeheer, maar tellen niet mee in actieve salarisrun, loonstrook-upload dropdown of actieve medewerker-totalen.
 - Loonstroken uploaden.
 - Loonstroken status: `Controle`, `Goedgekeurd`, `Afgekeurd`, `Ontbreekt`.
 - Belastingen op `JA` of `NEE` zetten.

@@ -5,7 +5,8 @@ Interne administratie-app voor AuraWash/B&T op basis van het Excel-overzicht en 
 ## Features
 
 - Beschikbaar geld aanpassen en toevoegen.
-- Salarissen aanpassen, medewerkers toevoegen en loonstroken uploaden.
+- Salarissen aanpassen, medewerkers toevoegen/verwijderen en loonstroken uploaden.
+- Medewerkers uit dienst zetten zonder ze direct uit de historie te verwijderen.
 - Loonstroken handmatig goedkeuren of afkeuren.
 - Belastingen op betaald/niet betaald zetten.
 - Te betalen facturen beheren op basis van kolom H `Betaald?`.

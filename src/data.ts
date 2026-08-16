@@ -3,6 +3,7 @@ export type Salary = {
   salary: number;
   holidayPay: number | null;
   total: number;
+  status?: "Actief" | "Uit dienst";
 };
 
 export type TaxItem = {

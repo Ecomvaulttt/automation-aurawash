@@ -114,6 +114,10 @@ function normalizePaid(value: string): PaidValue {
   return value.includes("termijn") ? "JA (termijn)" : value.trim().toUpperCase() === "JA" ? "JA" : "NEE";
 }
 
+function isActiveEmployee(salary: Salary) {
+  return salary.status !== "Uit dienst";
+}
+
 function statusTone(status: string) {
   const lower = status.toLowerCase();
   if (lower.includes("betaald") && !lower.includes("niet")) return "good";
@@ -140,10 +144,11 @@ function App() {
   const [newReceivable, setNewReceivable] = useState({ client: "", invoice: "", amount: "", dueDate: "" });
   const [newTax, setNewTax] = useState({ type: "", amount: "", deadline: "" });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeSalaries = salaries.filter(isActiveEmployee);
 
   const totals = useMemo(() => {
     const cash = sum(balances.map((item) => item.amount));
-    const salary = sum(salaries.map((item) => item.total));
+    const salary = sum(salaries.filter(isActiveEmployee).map((item) => item.total));
     const openTaxes = sum(
       taxes.filter((item) => isOpen(`${item.status} ${item.paid}`)).map((item) => item.amount),
     );
@@ -155,7 +160,12 @@ function App() {
     return { cash, salary, openTaxes, openPayables, expectedReceivables, fixedOpen };
   }, [balances, fixedCosts, payables, receivables, salaries, taxes]);
 
-  const payrollCompletion = Math.round((payrollDocs.length / salaries.length) * 100);
+  const linkedActiveEmployees = activeSalaries.filter((salary) =>
+    payrollDocs.some((doc) => doc.employee === salary.name),
+  );
+  const payrollCompletion = activeSalaries.length
+    ? Math.round((linkedActiveEmployees.length / activeSalaries.length) * 100)
+    : 0;
 
   const filteredPayables = payables
     .map((item, index) => ({ item, index }))
@@ -178,10 +188,12 @@ function App() {
   function handleFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
+    const selectedEmployee = employee || activeSalaries[0]?.name;
+    if (!selectedEmployee) return;
 
     const additions = files.map((file, index): PayrollDoc => ({
       id: `${Date.now()}-${index}`,
-      employee,
+      employee: selectedEmployee,
       period,
       fileName: file.name,
       uploadedAt: today,
@@ -216,10 +228,41 @@ function App() {
     if (!newSalary.name.trim() || Number.isNaN(total)) return;
     setSalaries((current) => [
       ...current,
-      { name: newSalary.name.trim(), salary: total, holidayPay: null, total },
+      { name: newSalary.name.trim(), salary: total, holidayPay: null, total, status: "Actief" },
     ]);
     setEmployee(newSalary.name.trim());
     setNewSalary({ name: "", total: "" });
+  }
+
+  function updateEmployeeName(index: number, name: string) {
+    const previousName = salaries[index]?.name;
+    setSalaries((current) => updateIndex(current, index, { name }));
+    if (!previousName) return;
+    setPayrollDocs((current) =>
+      current.map((doc) => (doc.employee === previousName ? { ...doc, employee: name } : doc)),
+    );
+    if (employee === previousName) setEmployee(name);
+  }
+
+  function setEmployeeStatus(index: number, status: Salary["status"]) {
+    const changedEmployee = salaries[index];
+    if (!changedEmployee) return;
+    setSalaries((current) => updateIndex(current, index, { status }));
+    if (status === "Uit dienst" && employee === changedEmployee.name) {
+      const nextActive = salaries.find((salary, currentIndex) => currentIndex !== index && isActiveEmployee(salary));
+      setEmployee(nextActive?.name ?? "");
+    }
+  }
+
+  function removeEmployee(index: number) {
+    const removedEmployee = salaries[index];
+    if (!removedEmployee) return;
+    const remaining = salaries.filter((_, currentIndex) => currentIndex !== index);
+    setSalaries(remaining);
+    setPayrollDocs((current) => current.filter((doc) => doc.employee !== removedEmployee.name));
+    if (employee === removedEmployee.name) {
+      setEmployee(remaining.find(isActiveEmployee)?.name ?? "");
+    }
   }
 
   function addTax() {
@@ -387,7 +430,7 @@ function App() {
           <>
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
               <Metric title="Beschikbaar" value={euro.format(totals.cash)} detail="Rekeningen + contant" icon={Banknote} />
-              <Metric title="Salarissen" value={euro.format(totals.salary)} detail={`${salaries.length} medewerkers`} icon={ReceiptText} />
+              <Metric title="Salarissen" value={euro.format(totals.salary)} detail={`${activeSalaries.length} actieve medewerkers`} icon={ReceiptText} />
               <Metric title="Belasting open" value={euro.format(totals.openTaxes)} detail="LB/BTW aandacht" icon={CalendarClock} danger />
               <Metric title="Facturen open" value={euro.format(totals.openPayables)} detail={`${payables.filter((p) => isPaidNo(p.paid)).length} kolom H = NEE`} icon={FolderUp} danger />
               <Metric title="Te ontvangen" value={euro.format(totals.expectedReceivables)} detail={`${receivables.filter((r) => isPaidNo(r.paid)).length} kolom J = NEE`} icon={ArrowDownToLine} />
@@ -500,24 +543,33 @@ function App() {
 
             <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
               <Card className="overflow-hidden">
-                <SectionHeader title="Mei 2026 salarisrun" note={`${payrollCompletion}% loonstroken gekoppeld`} />
+                <SectionHeader title="Medewerkers en salarisrun" note={`${payrollCompletion}% loonstroken gekoppeld`} />
                 <div className="table-scroll overflow-x-auto">
-                  <table className="w-full min-w-[680px] text-left text-sm">
+                  <table className="w-full min-w-[980px] text-left text-sm">
                     <thead className="bg-neutral-950 text-white">
                       <tr>
                         <Th>Medewerker</Th>
                         <Th>Salaris</Th>
                         <Th>Vakantiegeld</Th>
                         <Th>Totaal</Th>
+                        <Th>Dienstverband</Th>
                         <Th>Status</Th>
+                        <Th>Actie</Th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-100">
                       {salaries.map((salary, salaryIndex) => {
                         const linked = payrollDocs.some((doc) => doc.employee === salary.name);
+                        const active = isActiveEmployee(salary);
                         return (
-                          <tr key={salary.name} className="bg-white">
-                            <Td className="font-semibold text-neutral-950">{salary.name}</Td>
+                          <tr key={`${salary.name}-${salaryIndex}`} className={active ? "bg-white" : "bg-neutral-50"}>
+                            <Td>
+                              <Input
+                                value={salary.name}
+                                onChange={(event) => updateEmployeeName(salaryIndex, event.target.value)}
+                                aria-label={`Naam medewerker ${salaryIndex + 1}`}
+                              />
+                            </Td>
                             <Td>
                               <Input
                                 type="number"
@@ -538,9 +590,26 @@ function App() {
                             <Td>{salary.holidayPay ? euro.format(salary.holidayPay) : "-"}</Td>
                             <Td className="font-semibold">{euro.format(salary.total)}</Td>
                             <Td>
-                              <Badge tone={linked ? "good" : "warn"}>
-                                {linked ? "Loonstrook gekoppeld" : "Loonstrook ontbreekt"}
+                              <Select
+                                value={salary.status ?? "Actief"}
+                                onChange={(event) =>
+                                  setEmployeeStatus(salaryIndex, event.target.value as Salary["status"])
+                                }
+                              >
+                                <option>Actief</option>
+                                <option>Uit dienst</option>
+                              </Select>
+                            </Td>
+                            <Td>
+                              <Badge tone={!active ? "neutral" : linked ? "good" : "warn"}>
+                                {!active ? "Uit salarisrun" : linked ? "Loonstrook gekoppeld" : "Loonstrook ontbreekt"}
                               </Badge>
+                            </Td>
+                            <Td>
+                              <Button variant="danger" size="sm" onClick={() => removeEmployee(salaryIndex)}>
+                                <X size={16} />
+                                Verwijder
+                              </Button>
                             </Td>
                           </tr>
                         );
@@ -564,6 +633,8 @@ function App() {
                         </Td>
                         <Td>-</Td>
                         <Td>-</Td>
+                        <Td><Badge tone="good">Actief</Badge></Td>
+                        <Td><Badge tone="warn">Nieuw</Badge></Td>
                         <Td>
                           <Button variant="accent" size="sm" onClick={addSalary}>
                             <Plus size={16} />
@@ -583,14 +654,14 @@ function App() {
                       <p className="text-sm font-semibold text-[#A7C7E7]">Controlelijst</p>
                       <h2 className="mt-1 text-xl font-bold">Klaarzetten voor instanties</h2>
                     </div>
-                    <Badge tone="accent">{payrollDocs.length}/{salaries.length}</Badge>
+                    <Badge tone="accent">{linkedActiveEmployees.length}/{activeSalaries.length}</Badge>
                   </div>
                 </div>
                 <div className="divide-y divide-white/10">
                   {[
                     ["Salarissen uit Excel geladen", true],
                     ["Voorbeeldloonstrook herkend", true],
-                    ["Alle loonstroken gekoppeld", payrollDocs.length >= salaries.length],
+                    ["Alle actieve loonstroken gekoppeld", activeSalaries.length > 0 && linkedActiveEmployees.length >= activeSalaries.length],
                     ["Open LB/BTW posten zichtbaar", true],
                     ["Exportpakket beschikbaar", true],
                   ].map(([label, done]) => (
@@ -626,8 +697,8 @@ function App() {
 
               <div className="mt-5 grid gap-4">
                 <Field label="Medewerker">
-                  <Select value={employee} onChange={(event) => setEmployee(event.target.value)}>
-                    {salaries.map((salary) => (
+                  <Select value={employee || activeSalaries[0]?.name || ""} onChange={(event) => setEmployee(event.target.value)}>
+                    {activeSalaries.map((salary) => (
                       <option key={salary.name}>{salary.name}</option>
                     ))}
                   </Select>
