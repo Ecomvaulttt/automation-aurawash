@@ -22,6 +22,7 @@ Maak en onderhoud een simpele interne administratie-cockpit voor AuraWash/B&T:
 - Te betalen facturen beheren.
 - Te ontvangen facturen beheren.
 - Export kunnen maken voor instanties als CSV en JSON.
+- E-mail automation kunnen triggeren vanuit de GitHub repo met het e-mailadres van de ontvanger.
 - Alles moet simpel genoeg zijn voor dagelijks gebruik zonder technische kennis.
 
 ## Tech stack
@@ -34,6 +35,7 @@ Maak en onderhoud een simpele interne administratie-cockpit voor AuraWash/B&T:
 - Lucide icons
 - Data start in `src/data.ts`
 - Lokale gebruikerswijzigingen blijven bewaard in `localStorage`
+- E-mail automation via GitHub Actions + `nodemailer`
 
 ## Commands
 
@@ -68,6 +70,8 @@ Repo moet private blijven, omdat er loon- en financiele gegevens in staan.
 - `src/lib/export.ts`: CSV/JSON download helpers.
 - `src/components/ui/*`: lokale shadcn-style primitives.
 - `scripts/make-single-html.mjs`: maakt single-file HTML.
+- `scripts/send-email.mjs`: verstuurt workflow e-mail via SMTP-secrets.
+- `.github/workflows/send-email.yml`: handmatig te triggeren GitHub Actions e-mail automation.
 - `AGENTS.md`: korte projectregels voor Codex.
 - `.ai/lessons.md`: projectlessons die toegepast moeten worden.
 
@@ -126,7 +130,36 @@ De app moet minimaal dit ondersteunen:
 - Te ontvangen factuur betaald/niet betaald zetten.
 - Vaste lasten openstaand bedrag en status aanpassen.
 - Alles exporteren naar CSV/JSON.
+- E-mail template maken in de app.
+- E-mail versturen via GitHub Actions workflow met ontvanger, onderwerp en bericht.
 - Reset naar Excel-startdata.
+
+## E-mail automation
+
+Geen SMTP-wachtwoorden in de code zetten. Gebruik alleen GitHub Secrets:
+
+```text
+SMTP_HOST
+SMTP_PORT
+SMTP_USER
+SMTP_PASS
+SMTP_FROM
+```
+
+Workflow:
+
+```text
+Actions > Send automation email > Run workflow
+```
+
+Inputs:
+
+- `recipient_email`: zijn e-mailadres
+- `subject`: onderwerp
+- `body`: bericht
+- `reply_to`: optioneel
+
+De app heeft daarnaast een `E-mail` tab met mailto-fallback.
 
 ## UI-richting
 
@@ -168,6 +201,8 @@ Praktische QA minimaal:
 - Geen horizontale page overflow.
 - Uploadflow werkt.
 - JSON export downloadt.
+- E-mail tab opent.
+- GitHub workflow YAML blijft geldig.
 - Handmatige `JA/NEE` wijziging past totals aan.
 
 ## Dingen die niet fout mogen gaan
@@ -177,6 +212,7 @@ Praktische QA minimaal:
 - Geen `node_modules` of `dist` committen.
 - Niet vertrouwen op `Status` voor betaalberekeningen als er een betaaldkolom is.
 - Niet vergeten `aurawash-administratie.html` opnieuw te genereren met `npm run build`.
+- Geen SMTP secrets of e-mail wachtwoorden committen.
 - Geen lange uitleg geven als Ramzi vraagt om een simpele fix.
 
 ## Aanbevolen werkwijze voor volgende Codex

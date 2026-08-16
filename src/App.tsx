@@ -11,9 +11,11 @@ import {
   FileSpreadsheet,
   FolderUp,
   Gauge,
+  Mail,
   Plus,
   ReceiptText,
   Search,
+  Send,
   Upload,
   WalletCards,
   X,
@@ -53,8 +55,10 @@ const number = new Intl.NumberFormat("nl-NL", {
 });
 
 const today = new Date().toISOString().slice(0, 10);
+const githubActionsUrl =
+  "https://github.com/Ecomvaulttt/automation-aurawash/actions/workflows/send-email.yml";
 
-type Tab = "overzicht" | "loonstroken" | "instanties" | "facturen";
+type Tab = "overzicht" | "loonstroken" | "instanties" | "facturen" | "email";
 type PaidValue = "JA" | "NEE" | "JA (termijn)";
 type Balance = (typeof initialBalances)[number];
 type FixedCost = (typeof initialFixedCosts)[number];
@@ -143,6 +147,11 @@ function App() {
   const [newPayable, setNewPayable] = useState({ company: "", invoice: "", amount: "", deadline: "" });
   const [newReceivable, setNewReceivable] = useState({ client: "", invoice: "", amount: "", dueDate: "" });
   const [newTax, setNewTax] = useState({ type: "", amount: "", deadline: "" });
+  const [emailDraft, setEmailDraft] = useStoredState("aurawash-email-draft", {
+    to: "",
+    subject: "AuraWash administratie update",
+    body: "Hi,\n\nDe AuraWash administratie is bijgewerkt. De actuele loonstroken, facturen en betaalstatussen staan klaar in het exportpakket.\n\nGroet,\nAuraWash",
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeSalaries = salaries.filter(isActiveEmployee);
 
@@ -370,6 +379,10 @@ function App() {
     );
   }
 
+  const mailtoHref = `mailto:${encodeURIComponent(emailDraft.to)}?subject=${encodeURIComponent(
+    emailDraft.subject,
+  )}&body=${encodeURIComponent(emailDraft.body)}`;
+
   return (
     <main className="min-h-[100dvh] bg-[#f6f7f7]">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
@@ -407,6 +420,7 @@ function App() {
               ["loonstroken", ReceiptText, "Loonstroken"],
               ["instanties", ClipboardList, "Instanties"],
               ["facturen", WalletCards, "Facturen"],
+              ["email", Mail, "E-mail"],
             ].map(([id, Icon, label]) => (
               <button
                 key={id as string}
@@ -849,6 +863,81 @@ function App() {
                 <Preview label="Vaste lasten open" value={euro.format(totals.fixedOpen)} />
                 <Preview label="Bron Excel" value="B&T _ AuraWash Overzicht Mei 2026.xlsx" wide />
                 <Preview label="Voorbeeld PDF" value="115 Murabe-A.--P07.pdf" wide />
+              </div>
+            </Card>
+          </section>
+        )}
+
+        {tab === "email" && (
+          <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+            <Card className="p-5">
+              <div className="flex items-start gap-3">
+                <Mail className="mt-1 text-neutral-500" />
+                <div>
+                  <h2 className="text-xl font-bold">E-mail automation</h2>
+                  <p className="mt-1 text-sm leading-6 text-neutral-600">
+                    Maak hier de e-mail klaar. Versturen kan via je mailprogramma of via GitHub Actions met SMTP-secrets.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-4">
+                <Field label="Ontvanger">
+                  <Input
+                    type="email"
+                    value={emailDraft.to}
+                    onChange={(event) =>
+                      setEmailDraft((current) => ({ ...current, to: event.target.value }))
+                    }
+                    placeholder="zijn@email.nl"
+                  />
+                </Field>
+                <Field label="Onderwerp">
+                  <Input
+                    value={emailDraft.subject}
+                    onChange={(event) =>
+                      setEmailDraft((current) => ({ ...current, subject: event.target.value }))
+                    }
+                  />
+                </Field>
+                <Field label="Bericht">
+                  <textarea
+                    value={emailDraft.body}
+                    onChange={(event) =>
+                      setEmailDraft((current) => ({ ...current, body: event.target.value }))
+                    }
+                    className="min-h-48 w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-950 outline-none transition placeholder:text-neutral-500 focus:border-neutral-950 focus:ring-2 focus:ring-[#A7C7E7]"
+                  />
+                </Field>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <a
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#A7C7E7] px-4 text-sm font-semibold text-neutral-950 transition hover:bg-[#91b8df]"
+                    href={mailtoHref}
+                  >
+                    <Send size={18} />
+                    Open e-mail
+                  </a>
+                  <a
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-white px-4 text-sm font-semibold text-neutral-950 ring-1 ring-neutral-200 transition hover:bg-neutral-100"
+                    href={githubActionsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <FileArchive size={18} />
+                    GitHub workflow
+                  </a>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="overflow-hidden">
+              <SectionHeader title="GitHub setup" note="Eenmalig secrets toevoegen" />
+              <div className="grid gap-3 p-4">
+                <Preview label="Workflow" value=".github/workflows/send-email.yml" />
+                <Preview label="Script" value="scripts/send-email.mjs" />
+                <Preview label="Nodig in GitHub Secrets" value="SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM" wide />
+                <Preview label="Runnen" value="Actions > Send automation email > Run workflow > e-mailadres invullen" wide />
+                <Preview label="Veiligheid" value="Geen SMTP wachtwoorden in code. Alleen GitHub Secrets gebruiken." wide />
               </div>
             </Card>
           </section>
