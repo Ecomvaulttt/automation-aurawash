@@ -38,3 +38,7 @@ Gebruik voor betaalstatussen altijd de expliciete betaald-kolom:
 - `Te ontvangen facturen`: kolom J `Beataald`
 
 Statusvelden zijn alleen context.
+
+## Codex context
+
+Nieuwe Codex-agent? Lees eerst `CODEX_KNOWLEDGE.md` en `AGENTS.md`.
