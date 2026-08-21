@@ -1,10 +1,15 @@
-# AuraWash Administratie Cockpit
+# EcomVault Ops Cockpit
 
-Interne administratie-app voor AuraWash/B&T op basis van het Excel-overzicht en loonstrookworkflow.
+Plug-and-play administratie cockpit voor autodetailers, carwash/detailing shops en servicebedrijven.
+AuraWash/B&T is de eerste demo-tenant.
 
 ## Features
 
+- Klant-onboarding met bedrijfsnaam, logo, boekhouder, Slack en inbox.
+- EcomVault design system: Ink Black, Warm White, Royal Blue en Champagne.
 - Beschikbaar geld aanpassen en toevoegen.
+- Veilige bankflow via periodieke CSV/XLS upload in plaats van bankcredentials opslaan.
+- Klikbare KPI's met maand/kwartaal/jaar analyse.
 - Salarissen aanpassen, medewerkers toevoegen/verwijderen en loonstroken uploaden.
 - Medewerkers uit dienst zetten zonder ze direct uit de historie te verwijderen.
 - Loonstroken handmatig goedkeuren of afkeuren.
@@ -17,6 +22,8 @@ Interne administratie-app voor AuraWash/B&T op basis van het Excel-overzicht en 
 - Documentendossier met PDF/data-preview per factuur.
 - Slack reminders voor deadlines.
 - Automatische klantmail voor te ontvangen facturen wanneer betaling nog niet binnen is.
+- Branded factuur HTML export per klant.
+- Boekhouderpakket HTML export met kosten, cashflow, activa/passiva indicatie en bewijsstukken.
 - Lokale wijzigingen blijven bewaard in `localStorage`.
 
 ## Starten
@@ -57,6 +64,17 @@ SMTP_FROM
 Daarna kun je via `Actions > Send automation email > Run workflow` een ontvanger, onderwerp en bericht invullen.
 
 De app bevat ook een `E-mail` tab met een mailtemplate en directe `mailto` knop.
+
+## Plug-and-play setup
+
+Start bij de `Setup` tab:
+
+1. Vul bedrijfsnaam, sector, contactpersoon, logo en brandkleur in.
+2. Voeg administratie- en boekhouder e-mail toe.
+3. Kies Slack kanaal.
+4. Upload CSV/XLS bankbestand van de laatste 30 dagen.
+5. Koppel inbox/IMAP en SMTP secrets.
+6. Controleer documentendossier en zet klantmail pas daarna live.
 
 ## Inbox, Slack en klantmail automation
 

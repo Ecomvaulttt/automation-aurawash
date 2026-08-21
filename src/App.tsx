@@ -2,25 +2,35 @@ import { ChangeEvent, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   Banknote,
+  BarChart3,
   Bot,
+  Building2,
   CalendarClock,
   CheckCircle2,
   ClipboardList,
+  CreditCard,
+  Download,
   Eye,
   FileArchive,
   FileCheck2,
   FileJson,
+  FilePlus2,
   FileSpreadsheet,
   FileText,
   FolderUp,
   Gauge,
+  Landmark,
   Mail,
   MessageSquareWarning,
+  Palette,
+  PlugZap,
   Plus,
   ReceiptText,
   Search,
   Send,
+  ShieldCheck,
   Upload,
+  UserRound,
   WalletCards,
   X,
 } from "lucide-react";
@@ -48,9 +58,6 @@ import {
 import { downloadFile, ExportRow, toCsv } from "./lib/export";
 import { cn } from "./lib/utils";
 
-const logoUrl =
-  "https://aurawash.nl/cdn/shop/files/logo_top_site.png?v=1770326175&width=360";
-
 const euro = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
@@ -64,11 +71,44 @@ const today = new Date().toISOString().slice(0, 10);
 const githubActionsUrl =
   "https://github.com/Ecomvaulttt/automation-aurawash/actions/workflows/send-email.yml";
 
-type Tab = "overzicht" | "loonstroken" | "instanties" | "facturen" | "automation" | "email";
+type Tab = "onboarding" | "overzicht" | "loonstroken" | "instanties" | "facturen" | "automation" | "email";
 type PaidValue = "JA" | "NEE" | "JA (termijn)";
 type Balance = (typeof initialBalances)[number];
 type FixedCost = (typeof initialFixedCosts)[number];
 type DocumentType = InvoiceDocument["type"];
+type PeriodView = "maand" | "kwartaal" | "jaar";
+type MetricKey = "cash" | "salary" | "tax" | "payables" | "receivables" | "fixed";
+
+type ClientProfile = {
+  companyName: string;
+  sector: string;
+  contactName: string;
+  adminEmail: string;
+  bookkeeperEmail: string;
+  slackChannel: string;
+  logoUrl: string;
+  brandColor: string;
+  bankUploadCadence: string;
+  lastBankUpload: string;
+};
+
+type InvoiceDraft = {
+  client: string;
+  email: string;
+  invoiceNumber: string;
+  description: string;
+  amount: string;
+  dueDate: string;
+};
+
+type FinancialMetric = {
+  key: MetricKey;
+  title: string;
+  value: number;
+  detail: string;
+  icon: typeof Banknote;
+  danger?: boolean;
+};
 
 type AutomationSettings = {
   gmailAccount: string;
@@ -248,9 +288,52 @@ function buildReminders(
   });
 }
 
+function clampPercent(value: number, max: number) {
+  if (!max) return 0;
+  return Math.max(6, Math.min(100, Math.round((value / max) * 100)));
+}
+
+function periodLabel(period: PeriodView) {
+  if (period === "kwartaal") return "Kwartaal";
+  if (period === "jaar") return "Jaar";
+  return "Maand";
+}
+
+function connectorStatus(settings: AutomationSettings, profile: ClientProfile) {
+  return [
+    { label: "Gmail inbox", done: Boolean(settings.gmailAccount), detail: settings.gmailAccount || "Nog niet verbonden" },
+    { label: "Slack kanaal", done: Boolean(settings.slackChannel), detail: settings.slackChannel || "Nog niet gekozen" },
+    { label: "Boekhouder", done: Boolean(profile.bookkeeperEmail), detail: profile.bookkeeperEmail || "E-mail ontbreekt" },
+    { label: "Bankbestand", done: Boolean(profile.lastBankUpload), detail: profile.lastBankUpload || "Upload CSV/XLS van 30 dagen" },
+    { label: "Klantbranding", done: Boolean(profile.companyName && profile.logoUrl), detail: profile.companyName || "Bedrijfsnaam/logo" },
+  ];
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
 function App() {
-  const [tab, setTab] = useState<Tab>("overzicht");
+  const [tab, setTab] = useState<Tab>("onboarding");
   const [query, setQuery] = useState("");
+  const [periodView, setPeriodView] = useStoredState<PeriodView>("ecomvault-period-view", "maand");
+  const [selectedMetric, setSelectedMetric] = useStoredState<MetricKey>("ecomvault-selected-metric", "cash");
+  const [clientProfile, setClientProfile] = useStoredState<ClientProfile>("ecomvault-client-profile", {
+    companyName: "AuraWash",
+    sector: "Autodetailing / carwash",
+    contactName: "Ramzi",
+    adminEmail: "administratie@aurawash.nl",
+    bookkeeperEmail: "",
+    slackChannel: "#administratie",
+    logoUrl: "https://aurawash.nl/cdn/shop/files/logo_top_site.png?v=1770326175&width=360",
+    brandColor: "#2D5BFF",
+    bankUploadCadence: "Elke 30 dagen",
+    lastBankUpload: "",
+  });
   const [balances, setBalances] = useStoredState<Balance[]>("aurawash-balances", initialBalances);
   const [salaries, setSalaries] = useStoredState<Salary[]>("aurawash-salaries", initialSalaries);
   const [taxes, setTaxes] = useStoredState<TaxItem[]>("aurawash-taxes", initialTaxes);
@@ -283,6 +366,14 @@ function App() {
     dueDate: "",
     customerEmail: "",
   });
+  const [invoiceDraft, setInvoiceDraft] = useStoredState<InvoiceDraft>("ecomvault-invoice-draft", {
+    client: "Udenhout",
+    email: "",
+    invoiceNumber: `EV-${today.replaceAll("-", "")}`,
+    description: "Detailing services",
+    amount: "",
+    dueDate: today,
+  });
   const [emailDraft, setEmailDraft] = useStoredState("aurawash-email-draft", {
     to: "",
     subject: "AuraWash administratie update",
@@ -290,6 +381,8 @@ function App() {
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const invoiceFileInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const bankInputRef = useRef<HTMLInputElement>(null);
   const activeSalaries = salaries.filter(isActiveEmployee);
 
   const totals = useMemo(() => {
@@ -316,6 +409,69 @@ function App() {
       ),
     [automationSettings.payableReminderDays, automationSettings.receivableReminderDays, payables, receivables],
   );
+
+  const financialMetrics: FinancialMetric[] = [
+    {
+      key: "cash",
+      title: "Beschikbaar",
+      value: totals.cash,
+      detail: "Rekeningen + contant",
+      icon: Banknote,
+    },
+    {
+      key: "salary",
+      title: "Salarissen",
+      value: totals.salary,
+      detail: `${activeSalaries.length} actieve medewerkers`,
+      icon: ReceiptText,
+    },
+    {
+      key: "tax",
+      title: "Belasting open",
+      value: totals.openTaxes,
+      detail: "LB/BTW aandacht",
+      icon: CalendarClock,
+      danger: totals.openTaxes > 0,
+    },
+    {
+      key: "payables",
+      title: "Facturen open",
+      value: totals.openPayables,
+      detail: `${payables.filter((p) => isPaidNo(p.paid)).length} kolom H = NEE`,
+      icon: FolderUp,
+      danger: totals.openPayables > 0,
+    },
+    {
+      key: "receivables",
+      title: "Te ontvangen",
+      value: totals.expectedReceivables,
+      detail: `${receivables.filter((r) => isPaidNo(r.paid)).length} kolom J = NEE`,
+      icon: ArrowDownToLine,
+    },
+    {
+      key: "fixed",
+      title: "Vaste lasten",
+      value: totals.fixedOpen,
+      detail: "Openstaand bedrag",
+      icon: WalletCards,
+      danger: totals.fixedOpen > 0,
+    },
+  ];
+
+  const selectedFinancialMetric =
+    financialMetrics.find((metric) => metric.key === selectedMetric) ?? financialMetrics[0];
+  const periodFactor = periodView === "jaar" ? 12 : periodView === "kwartaal" ? 3 : 1;
+  const chartRows = [
+    { label: "Nu", value: selectedFinancialMetric.value },
+    { label: "Vorige", value: Math.max(0, selectedFinancialMetric.value * 0.86) },
+    { label: periodLabel(periodView), value: selectedFinancialMetric.value * periodFactor },
+  ];
+  const chartMax = Math.max(...chartRows.map((row) => row.value), 1);
+  const connectorChecklist = connectorStatus(automationSettings, clientProfile);
+  const onboardingProgress = Math.round(
+    (connectorChecklist.filter((item) => item.done).length / connectorChecklist.length) * 100,
+  );
+  const cashCoverage = totals.cash - totals.salary - totals.openTaxes - totals.openPayables - totals.fixedOpen;
 
   const selectedDoc = invoiceDocs.find((doc) => doc.id === selectedDocId) ?? invoiceDocs[0];
   const linkedDocumentCount = invoiceDocs.filter((doc) => doc.linkedInvoice).length;
@@ -403,6 +559,127 @@ function App() {
     setInvoiceDocs((current) => [...additions, ...current]);
     setSelectedDocId(additions[0]?.id ?? selectedDocId);
     event.target.value = "";
+  }
+
+  function handleLogoUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setClientProfile((current) => ({ ...current, logoUrl: String(reader.result || "") }));
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  }
+
+  function handleBankUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const label = `${today} · ${file.name}`;
+    setClientProfile((current) => ({ ...current, lastBankUpload: label }));
+    setBalances((current) => [
+      { label: "Bankbestand 30 dagen", amount: totals.cash },
+      ...current.filter((item) => item.label !== "Bankbestand 30 dagen"),
+    ]);
+    event.target.value = "";
+  }
+
+  function exportBrandedInvoice() {
+    const amount = Number(invoiceDraft.amount);
+    const invoiceTotal = Number.isNaN(amount) ? 0 : amount;
+    const html = `<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <title>Factuur ${escapeHtml(invoiceDraft.invoiceNumber)}</title>
+  <style>
+    body{font-family:Inter,Arial,sans-serif;background:#F5F2ED;color:#0B0B0C;margin:0;padding:48px}
+    .page{max-width:860px;margin:0 auto;background:white;border:1px solid #E8D9B8;padding:48px}
+    .top{display:flex;justify-content:space-between;gap:32px;align-items:flex-start;border-bottom:1px solid #E8D9B8;padding-bottom:32px}
+    img{max-height:72px;max-width:180px;object-fit:contain}
+    h1{font-size:48px;line-height:1;margin:0 0 12px;font-weight:700;letter-spacing:-.02em}
+    table{width:100%;border-collapse:collapse;margin-top:36px}
+    th,td{text-align:left;border-bottom:1px solid #EAE6DE;padding:14px}
+    th{font-size:12px;text-transform:uppercase;color:#555}
+    .total{font-size:28px;font-weight:700;color:${escapeHtml(clientProfile.brandColor)}}
+    .muted{color:#555}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="top">
+      <div>
+        ${clientProfile.logoUrl ? `<img src="${escapeHtml(clientProfile.logoUrl)}" alt="${escapeHtml(clientProfile.companyName)}" />` : ""}
+        <h1>Factuur</h1>
+        <p class="muted">${escapeHtml(clientProfile.companyName)} · ${escapeHtml(clientProfile.sector)}</p>
+      </div>
+      <div>
+        <strong>${escapeHtml(invoiceDraft.invoiceNumber)}</strong><br/>
+        Factuurdatum: ${today}<br/>
+        Vervaldatum: ${escapeHtml(invoiceDraft.dueDate)}
+      </div>
+    </section>
+    <section>
+      <p><strong>Aan:</strong> ${escapeHtml(invoiceDraft.client)}${invoiceDraft.email ? ` · ${escapeHtml(invoiceDraft.email)}` : ""}</p>
+      <table>
+        <thead><tr><th>Omschrijving</th><th>Bedrag</th></tr></thead>
+        <tbody><tr><td>${escapeHtml(invoiceDraft.description)}</td><td>${euro.format(invoiceTotal)}</td></tr></tbody>
+      </table>
+      <p class="total">Totaal ${euro.format(invoiceTotal)}</p>
+      <p class="muted">Gegenereerd vanuit EcomVault Ops Cockpit.</p>
+    </section>
+  </main>
+</body>
+</html>`;
+    downloadFile(`factuur-${invoiceDraft.invoiceNumber || today}.html`, html, "text/html;charset=utf-8");
+  }
+
+  function exportAccountantReport() {
+    const rows = financialMetrics
+      .map((metric) => `<tr><td>${escapeHtml(metric.title)}</td><td>${euro.format(metric.value)}</td><td>${escapeHtml(metric.detail)}</td></tr>`)
+      .join("");
+    const evidenceRows = invoiceDocs
+      .map(
+        (doc) =>
+          `<tr><td>${escapeHtml(doc.type)}</td><td>${escapeHtml(doc.relation)}</td><td>${escapeHtml(doc.invoiceNumber)}</td><td>${euro.format(doc.amount)}</td><td>${escapeHtml(doc.paid)}</td><td>${escapeHtml(doc.storagePath || doc.fileName)}</td></tr>`,
+      )
+      .join("");
+    const html = `<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(clientProfile.companyName)} boekhouderpakket</title>
+  <style>
+    body{font-family:Inter,Arial,sans-serif;background:#F5F2ED;color:#0B0B0C;margin:0;padding:40px}
+    main{max-width:1120px;margin:0 auto;background:white;border:1px solid #E8D9B8;padding:40px}
+    h1{font-size:44px;letter-spacing:-.02em;margin:0 0 8px}
+    h2{margin-top:36px}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{text-align:left;border-bottom:1px solid #EAE6DE;padding:10px;font-size:14px;vertical-align:top}
+    th{font-size:12px;text-transform:uppercase;color:#555}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:24px}
+    .box{border:1px solid #E8D9B8;padding:16px;background:#F5F2ED}
+    .mono{font-family:ui-monospace,Menlo,monospace}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>${escapeHtml(clientProfile.companyName)} boekhouderpakket</h1>
+    <p>Gegenereerd op ${today}. Periode: ${periodLabel(periodView)}. Bewijsstukken staan als opslagpad/bestandsnaam in dit pakket.</p>
+    <section class="grid">
+      <div class="box"><strong>Beschikbaar</strong><br/><span class="mono">${euro.format(totals.cash)}</span></div>
+      <div class="box"><strong>Cashflow ruimte</strong><br/><span class="mono">${euro.format(cashCoverage)}</span></div>
+      <div class="box"><strong>Open kosten</strong><br/><span class="mono">${euro.format(totals.openPayables + totals.fixedOpen + totals.openTaxes)}</span></div>
+      <div class="box"><strong>Te ontvangen</strong><br/><span class="mono">${euro.format(totals.expectedReceivables)}</span></div>
+    </section>
+    <h2>Financieel overzicht</h2>
+    <table><thead><tr><th>Post</th><th>Bedrag</th><th>Context</th></tr></thead><tbody>${rows}</tbody></table>
+    <h2>Bewijsstukken</h2>
+    <table><thead><tr><th>Type</th><th>Relatie</th><th>Factuur</th><th>Bedrag</th><th>Betaald</th><th>PDF / opslag</th></tr></thead><tbody>${evidenceRows}</tbody></table>
+  </main>
+</body>
+</html>`;
+    downloadFile(`boekhouderpakket-${clientProfile.companyName}-${today}.html`, html, "text/html;charset=utf-8");
   }
 
   function updateInvoiceDoc(id: string, patch: Partial<InvoiceDocument>) {
@@ -570,6 +847,9 @@ function App() {
     invoiceDocs,
     reminders,
     automationSettings,
+    clientProfile,
+    periodView,
+    cashCoverage,
     totals,
   };
 
@@ -590,18 +870,22 @@ function App() {
   )}&body=${encodeURIComponent(emailDraft.body)}`;
 
   return (
-    <main className="min-h-[100dvh] bg-[#f6f7f7]">
+    <main className="min-h-[100dvh] bg-[#F5F2ED] text-[#0B0B0C]">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="rounded-lg border border-neutral-200 bg-white">
+        <header className="rounded-2xl border border-[#E8D9B8]/70 bg-[#0B0B0C] text-[#F5F2ED] shadow-sm">
           <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-neutral-950">
-                <img src={logoUrl} alt="AuraWash" className="max-h-10 max-w-10 object-contain invert" />
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#E8D9B8]/20 bg-[#17171A]">
+                {clientProfile.logoUrl ? (
+                  <img src={clientProfile.logoUrl} alt={clientProfile.companyName} className="max-h-10 max-w-10 object-contain" />
+                ) : (
+                  <Building2 className="text-[#E8D9B8]" size={24} />
+                )}
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase text-neutral-500">B&T x AuraWash</p>
-                <h1 className="brand-display truncate text-2xl text-neutral-950 sm:text-3xl">
-                  Administratie cockpit
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">EcomVault Ops · {clientProfile.sector}</p>
+                <h1 className="brand-display truncate text-2xl text-[#F5F2ED] sm:text-3xl">
+                  {clientProfile.companyName} cockpit
                 </h1>
               </div>
             </div>
@@ -620,8 +904,9 @@ function App() {
             </div>
           </div>
 
-          <nav className="flex gap-1 overflow-x-auto border-t border-neutral-200 p-2">
+          <nav className="flex gap-1 overflow-x-auto border-t border-white/10 p-2">
             {[
+              ["onboarding", PlugZap, "Setup"],
               ["overzicht", Gauge, "Overzicht"],
               ["loonstroken", ReceiptText, "Loonstroken"],
               ["instanties", ClipboardList, "Instanties"],
@@ -635,8 +920,8 @@ function App() {
                 className={cn(
                   "inline-flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold transition",
                   tab === id
-                    ? "bg-neutral-950 text-white shadow-sm"
-                    : "text-neutral-600 hover:bg-neutral-100",
+                    ? "bg-[#2D5BFF] text-white shadow-sm"
+                    : "text-[#F5F2ED]/70 hover:bg-white/10 hover:text-[#F5F2ED]",
                 )}
                 aria-pressed={tab === id}
               >
@@ -647,15 +932,277 @@ function App() {
           </nav>
         </header>
 
+        {tab === "onboarding" && (
+          <section className="grid gap-5">
+            <Card className="overflow-hidden border-[#0B0B0C] bg-[#0B0B0C] text-[#F5F2ED]">
+              <div className="grid gap-6 p-6 lg:grid-cols-[1.1fr_0.9fr] lg:p-8">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">Plug-and-play finance ops</p>
+                  <h2 className="brand-display mt-3 max-w-4xl text-4xl leading-none tracking-[-0.02em] text-[#F5F2ED] sm:text-5xl lg:text-6xl">
+                    Administratie voor autodetailers die zichzelf bijwerkt.
+                  </h2>
+                  <p className="mt-5 max-w-2xl text-base leading-7 text-[#F5F2ED]/72">
+                    Klant koppelt inbox, Slack, boekhouder en bankbestand. Daarna haalt het systeem facturen,
+                    loonstroken en vaste lasten op, toont bewijsstukken en stuurt reminders voordat cashflow pijn doet.
+                  </p>
+                  <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                    <MiniStat label="Setup" value={`${onboardingProgress}%`} />
+                    <MiniStat label="Bewijzen" value={`${invoiceDocs.length}`} />
+                    <MiniStat label="Alerts" value={`${reminders.length}`} />
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-[#E8D9B8]/20 bg-white/[0.06] p-5 backdrop-blur">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-[#F5F2ED]/60">Installatiestatus</p>
+                      <p className="mt-1 text-3xl font-semibold text-white">{onboardingProgress}% klaar</p>
+                    </div>
+                    <ShieldCheck className="text-[#2D5BFF]" size={30} />
+                  </div>
+                  <div className="mt-5 grid gap-3">
+                    {connectorChecklist.map((item) => (
+                      <div key={item.label} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                        <div className="min-w-0">
+                          <p className="font-medium text-white">{item.label}</p>
+                          <p className="truncate text-sm text-[#F5F2ED]/55">{item.detail}</p>
+                        </div>
+                        <Badge tone={item.done ? "good" : "warn"}>{item.done ? "Verbonden" : "Actie"}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+              <Card className="overflow-hidden">
+                <SectionHeader title="Klantprofiel" note="White-label basis voor deze klant" />
+                <div className="grid gap-4 p-5">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Bedrijfsnaam">
+                      <Input
+                        value={clientProfile.companyName}
+                        onChange={(event) => setClientProfile((current) => ({ ...current, companyName: event.target.value }))}
+                      />
+                    </Field>
+                    <Field label="Segment">
+                      <Input
+                        value={clientProfile.sector}
+                        onChange={(event) => setClientProfile((current) => ({ ...current, sector: event.target.value }))}
+                      />
+                    </Field>
+                    <Field label="Contactpersoon">
+                      <div className="relative">
+                        <UserRound className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
+                        <Input
+                          className="pl-9"
+                          value={clientProfile.contactName}
+                          onChange={(event) => setClientProfile((current) => ({ ...current, contactName: event.target.value }))}
+                        />
+                      </div>
+                    </Field>
+                    <Field label="Administratie e-mail">
+                      <Input
+                        type="email"
+                        value={clientProfile.adminEmail}
+                        onChange={(event) => setClientProfile((current) => ({ ...current, adminEmail: event.target.value }))}
+                      />
+                    </Field>
+                    <Field label="Boekhouder e-mail">
+                      <Input
+                        type="email"
+                        value={clientProfile.bookkeeperEmail}
+                        onChange={(event) => setClientProfile((current) => ({ ...current, bookkeeperEmail: event.target.value }))}
+                      />
+                    </Field>
+                    <Field label="Slack kanaal">
+                      <Input
+                        value={clientProfile.slackChannel}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setClientProfile((current) => ({ ...current, slackChannel: value }));
+                          setAutomationSettings((current) => ({ ...current, slackChannel: value }));
+                        }}
+                      />
+                    </Field>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
+                    <Field label="Logo URL">
+                      <Input
+                        value={clientProfile.logoUrl}
+                        onChange={(event) => setClientProfile((current) => ({ ...current, logoUrl: event.target.value }))}
+                      />
+                    </Field>
+                    <Field label="Actiekleur">
+                      <Input
+                        type="color"
+                        value={clientProfile.brandColor}
+                        onChange={(event) => setClientProfile((current) => ({ ...current, brandColor: event.target.value }))}
+                      />
+                    </Field>
+                  </div>
+                  <input ref={logoInputRef} className="hidden" type="file" accept=".png,.jpg,.jpeg,.webp,.svg" onChange={handleLogoUpload} />
+                  <Button variant="secondary" onClick={() => logoInputRef.current?.click()}>
+                    <Palette size={18} />
+                    Logo uploaden
+                  </Button>
+                </div>
+              </Card>
+
+              <Card className="overflow-hidden">
+                <SectionHeader title="Veilige bankflow" note="Zonder banklogins in het systeem" />
+                <div className="grid gap-4 p-5">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Preview label="Uploadritme" value={clientProfile.bankUploadCadence} />
+                    <Preview label="Laatste upload" value={clientProfile.lastBankUpload || "Nog geen bankbestand"} />
+                    <Preview label="Cashruimte" value={euro.format(cashCoverage)} />
+                  </div>
+                  <div className="rounded-xl border border-dashed border-[#2D5BFF]/40 bg-[#2D5BFF]/5 p-5">
+                    <div className="flex items-start gap-3">
+                      <Landmark className="mt-1 text-[#2D5BFF]" />
+                      <div>
+                        <h3 className="flex items-center gap-2 font-semibold text-[#0B0B0C]">
+                          <CreditCard size={18} />
+                          Slack message voor klant
+                        </h3>
+                        <p className="mt-1 text-sm leading-6 text-neutral-600">
+                          Upload je bank CSV/XLS van de afgelopen 30 dagen. Het systeem rekent beschikbaar geld,
+                          cashflow en afwijkende kosten uit zonder bankcredentials te bewaren.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <input ref={bankInputRef} className="hidden" type="file" accept=".csv,.xls,.xlsx" onChange={handleBankUpload} />
+                  <Button variant="accent" onClick={() => bankInputRef.current?.click()}>
+                    <Upload size={18} />
+                    Bankbestand uploaden
+                  </Button>
+                </div>
+              </Card>
+            </section>
+
+            <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+              <Card className="overflow-hidden">
+                <SectionHeader title="Branded factuur maken" note="Voor detailers, carwash en servicebedrijven" />
+                <div className="grid gap-4 p-5">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Klant">
+                      <Input value={invoiceDraft.client} onChange={(event) => setInvoiceDraft((current) => ({ ...current, client: event.target.value }))} />
+                    </Field>
+                    <Field label="Klant e-mail">
+                      <Input type="email" value={invoiceDraft.email} onChange={(event) => setInvoiceDraft((current) => ({ ...current, email: event.target.value }))} />
+                    </Field>
+                    <Field label="Factuurnummer">
+                      <Input value={invoiceDraft.invoiceNumber} onChange={(event) => setInvoiceDraft((current) => ({ ...current, invoiceNumber: event.target.value }))} />
+                    </Field>
+                    <Field label="Vervaldatum">
+                      <Input value={invoiceDraft.dueDate} onChange={(event) => setInvoiceDraft((current) => ({ ...current, dueDate: event.target.value }))} />
+                    </Field>
+                  </div>
+                  <Field label="Omschrijving">
+                    <Input value={invoiceDraft.description} onChange={(event) => setInvoiceDraft((current) => ({ ...current, description: event.target.value }))} />
+                  </Field>
+                  <Field label="Bedrag">
+                    <Input type="number" step="0.01" value={invoiceDraft.amount} onChange={(event) => setInvoiceDraft((current) => ({ ...current, amount: event.target.value }))} />
+                  </Field>
+                  <Button variant="accent" onClick={exportBrandedInvoice}>
+                    <FilePlus2 size={18} />
+                    Branded factuur exporteren
+                  </Button>
+                </div>
+              </Card>
+
+              <Card className="overflow-hidden">
+                <SectionHeader title="Boekhouderpakket" note="Kosten, cashflow, bewijs en cijfers" />
+                <div className="grid gap-4 p-5">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Preview label="Open kosten" value={euro.format(totals.openPayables + totals.fixedOpen + totals.openTaxes)} />
+                    <Preview label="Te ontvangen" value={euro.format(totals.expectedReceivables)} />
+                    <Preview label="Activa indicatie" value={euro.format(totals.cash + totals.expectedReceivables)} />
+                    <Preview label="Passiva indicatie" value={euro.format(totals.openPayables + totals.openTaxes + totals.fixedOpen)} />
+                  </div>
+                  <Button variant="secondary" onClick={exportAccountantReport}>
+                    <Download size={18} />
+                    Boekhouder HTML export
+                  </Button>
+                </div>
+              </Card>
+            </section>
+          </section>
+        )}
+
         {tab === "overzicht" && (
           <>
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-              <Metric title="Beschikbaar" value={euro.format(totals.cash)} detail="Rekeningen + contant" icon={Banknote} />
-              <Metric title="Salarissen" value={euro.format(totals.salary)} detail={`${activeSalaries.length} actieve medewerkers`} icon={ReceiptText} />
-              <Metric title="Belasting open" value={euro.format(totals.openTaxes)} detail="LB/BTW aandacht" icon={CalendarClock} danger />
-              <Metric title="Facturen open" value={euro.format(totals.openPayables)} detail={`${payables.filter((p) => isPaidNo(p.paid)).length} kolom H = NEE`} icon={FolderUp} danger />
-              <Metric title="Te ontvangen" value={euro.format(totals.expectedReceivables)} detail={`${receivables.filter((r) => isPaidNo(r.paid)).length} kolom J = NEE`} icon={ArrowDownToLine} />
-              <Metric title="Vaste lasten" value={euro.format(totals.fixedOpen)} detail="Openstaand bedrag" icon={WalletCards} danger={totals.fixedOpen > 0} />
+              {financialMetrics.map((metric) => (
+                <Metric
+                  key={metric.key}
+                  title={metric.title}
+                  value={euro.format(metric.value)}
+                  detail={metric.detail}
+                  icon={metric.icon}
+                  danger={metric.danger}
+                  active={selectedMetric === metric.key}
+                  onClick={() => setSelectedMetric(metric.key)}
+                />
+              ))}
+            </section>
+
+            <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+              <Card className="overflow-hidden">
+                <SectionHeader title={`${selectedFinancialMetric.title} analyse`} note={`${periodLabel(periodView)}weergave`} />
+                <div className="grid gap-5 p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="flex items-center gap-2 text-sm font-medium text-neutral-500">
+                        <BarChart3 size={16} />
+                        Geselecteerde post
+                      </p>
+                      <p className="mt-1 text-3xl font-semibold tracking-[-0.02em] text-[#0B0B0C]">{euro.format(selectedFinancialMetric.value)}</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 rounded-lg bg-[#0B0B0C] p-1">
+                      {(["maand", "kwartaal", "jaar"] as PeriodView[]).map((view) => (
+                        <button
+                          key={view}
+                          onClick={() => setPeriodView(view)}
+                          className={cn(
+                            "h-9 rounded-md px-3 text-sm font-semibold transition",
+                            periodView === view ? "bg-[#2D5BFF] text-white" : "text-[#F5F2ED]/70 hover:bg-white/10",
+                          )}
+                        >
+                          {periodLabel(view)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-3">
+                    {chartRows.map((row) => (
+                      <div key={row.label} className="grid gap-2">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="font-medium text-neutral-600">{row.label}</span>
+                          <span className="font-mono font-semibold text-[#0B0B0C]">{euro.format(row.value)}</span>
+                        </div>
+                        <div className="h-4 overflow-hidden rounded-full bg-[#EAE6DE]">
+                          <div
+                            className="h-full rounded-full bg-[#2D5BFF]"
+                            style={{ width: `${clampPercent(row.value, chartMax)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="overflow-hidden bg-[#0B0B0C] text-[#F5F2ED]">
+                <SectionHeader title="Management snapshot" note="Wat moet aandacht krijgen" dark />
+                <div className="grid gap-3 p-5">
+                  <Preview dark label="Cash na verplichtingen" value={euro.format(cashCoverage)} />
+                  <Preview dark label="Deadline alerts" value={`${reminders.length} open acties`} />
+                  <Preview dark label="Documentdekking" value={`${linkedDocumentCount}/${invoiceDocs.length} gekoppeld`} />
+                  <Preview dark label="Payroll controle" value={`${payrollCompletion}% compleet`} />
+                </div>
+              </Card>
             </section>
 
             <section className="grid gap-5 xl:grid-cols-[0.8fr_1fr]">
@@ -872,7 +1419,7 @@ function App() {
                 <div className="border-b border-white/10 p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-sm font-semibold text-[#A7C7E7]">Controlelijst</p>
+                      <p className="text-sm font-semibold text-[#E8D9B8]">Controlelijst</p>
                       <h2 className="mt-1 text-xl font-bold">Klaarzetten voor instanties</h2>
                     </div>
                     <Badge tone="accent">{linkedActiveEmployees.length}/{activeSalaries.length}</Badge>
@@ -887,7 +1434,7 @@ function App() {
                     ["Exportpakket beschikbaar", true],
                   ].map(([label, done]) => (
                     <div key={label as string} className="flex items-center gap-3 p-4">
-                      <CheckCircle2 className={done ? "text-[#A7C7E7]" : "text-white/25"} size={20} />
+                      <CheckCircle2 className={done ? "text-[#2D5BFF]" : "text-white/25"} size={20} />
                       <span className={done ? "text-white" : "text-white/55"}>{label as string}</span>
                     </div>
                   ))}
@@ -1284,7 +1831,7 @@ function App() {
                         onClick={() => setSelectedDocId(doc.id)}
                         className={cn(
                           "grid gap-2 border-b border-neutral-100 p-4 text-left transition hover:bg-neutral-50",
-                          selectedDoc?.id === doc.id && "bg-[#A7C7E7]/25",
+                          selectedDoc?.id === doc.id && "bg-[#2D5BFF]/10",
                         )}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -1445,12 +1992,12 @@ function App() {
                     onChange={(event) =>
                       setEmailDraft((current) => ({ ...current, body: event.target.value }))
                     }
-                    className="min-h-48 w-full rounded-md border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-950 outline-none transition placeholder:text-neutral-500 focus:border-neutral-950 focus:ring-2 focus:ring-[#A7C7E7]"
+                    className="min-h-48 w-full rounded-md border border-[#E8D9B8]/80 bg-white px-3 py-3 text-sm text-[#0B0B0C] outline-none transition placeholder:text-neutral-500 focus:border-[#2D5BFF] focus:ring-2 focus:ring-[#2D5BFF]/20"
                   />
                 </Field>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <a
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#A7C7E7] px-4 text-sm font-semibold text-neutral-950 transition hover:bg-[#91b8df]"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#2D5BFF] px-4 text-sm font-semibold text-white transition hover:bg-[#1F47E0]"
                     href={mailtoHref}
                   >
                     <Send size={18} />
@@ -1750,25 +2297,54 @@ function Metric({
   detail,
   icon: Icon,
   danger = false,
+  active = false,
+  onClick,
 }: {
   title: string;
   value: string;
   detail: string;
   icon: typeof Banknote;
   danger?: boolean;
+  active?: boolean;
+  onClick?: () => void;
 }) {
-  return (
-    <Card className={cn("p-4", danger && "border-red-200 bg-red-50")}>
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-neutral-500">{title}</p>
-          <p className="mt-2 text-2xl font-bold text-neutral-950">{value}</p>
-          <p className="mt-1 text-sm text-neutral-600">{detail}</p>
+          <p className={cn("text-sm font-semibold", active ? "text-[#E8D9B8]" : "text-neutral-500")}>{title}</p>
+          <p className={cn("mt-2 text-2xl font-bold", active ? "text-white" : "text-neutral-950")}>{value}</p>
+          <p className={cn("mt-1 text-sm", active ? "text-[#F5F2ED]/65" : "text-neutral-600")}>{detail}</p>
         </div>
-        <div className={cn("rounded-md p-2", danger ? "bg-red-100 text-red-700" : "bg-[#A7C7E7]/45 text-neutral-950")}>
+        <div className={cn("rounded-md p-2", active ? "bg-[#2D5BFF] text-white" : danger ? "bg-red-100 text-red-700" : "bg-[#2D5BFF]/10 text-[#2D5BFF]")}>
           <Icon size={20} />
         </div>
       </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "rounded-2xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5",
+          active
+            ? "border-[#0B0B0C] bg-[#0B0B0C]"
+            : danger
+              ? "border-red-200 bg-red-50"
+              : "border-[#E8D9B8]/80 bg-white",
+        )}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Card className={cn("p-4", danger && "border-red-200 bg-red-50")}>
+      {content}
     </Card>
   );
 }
@@ -1919,20 +2495,29 @@ function PaidSelect({
   );
 }
 
-function SectionHeader({ title, note }: { title: string; note: string }) {
+function SectionHeader({ title, note, dark = false }: { title: string; note: string; dark?: boolean }) {
   return (
-    <div className="flex flex-col gap-2 border-b border-neutral-200 p-5 sm:flex-row sm:items-center sm:justify-between">
-      <h2 className="text-xl font-bold text-neutral-950">{title}</h2>
-      <span className="text-sm font-medium text-neutral-500">{note}</span>
+    <div className={cn("flex flex-col gap-2 border-b p-5 sm:flex-row sm:items-center sm:justify-between", dark ? "border-white/10" : "border-[#E8D9B8]/70")}>
+      <h2 className={cn("text-xl font-semibold tracking-[-0.02em]", dark ? "text-[#F5F2ED]" : "text-[#0B0B0C]")}>{title}</h2>
+      <span className={cn("text-sm font-medium", dark ? "text-[#F5F2ED]/55" : "text-neutral-500")}>{note}</span>
     </div>
   );
 }
 
-function Preview({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+function Preview({ label, value, wide = false, dark = false }: { label: string; value: string; wide?: boolean; dark?: boolean }) {
   return (
-    <div className={cn("rounded-md border border-neutral-200 bg-neutral-50 p-4", wide && "sm:col-span-2")}>
-      <p className="text-xs font-semibold uppercase text-neutral-500">{label}</p>
-      <p className="mt-2 break-words text-sm font-semibold text-neutral-950">{value}</p>
+    <div className={cn("rounded-xl border p-4", dark ? "border-white/10 bg-white/[0.06]" : "border-[#E8D9B8]/70 bg-[#F5F2ED]", wide && "sm:col-span-2")}>
+      <p className={cn("text-xs font-semibold uppercase tracking-[0.08em]", dark ? "text-[#E8D9B8]" : "text-neutral-500")}>{label}</p>
+      <p className={cn("mt-2 break-words text-sm font-semibold", dark ? "text-[#F5F2ED]" : "text-[#0B0B0C]")}>{value}</p>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-[#E8D9B8]/20 bg-white/[0.06] p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">{label}</p>
+      <p className="mt-2 font-mono text-2xl font-semibold text-white">{value}</p>
     </div>
   );
 }

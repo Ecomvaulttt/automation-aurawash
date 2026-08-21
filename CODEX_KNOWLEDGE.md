@@ -1,4 +1,4 @@
-# Codex Knowledge - AuraWash Administratie
+# Codex Knowledge - EcomVault Ops Cockpit
 
 Dit bestand is bedoeld als directe context voor elke nieuwe Codex-agent die aan deze repo werkt.
 
@@ -13,9 +13,12 @@ Dit bestand is bedoeld als directe context voor elke nieuwe Codex-agent die aan 
 
 ## Projectdoel
 
-Maak en onderhoud een simpele interne administratie-cockpit voor AuraWash/B&T:
+Maak en onderhoud een plug-and-play finance operations cockpit voor autodetailers, carwash/detailing shops en servicebedrijven. AuraWash/B&T is de eerste demo-tenant.
 
+- Klant-onboarding met bedrijfsnaam, logo, sector, boekhouder, Slack kanaal en administratie e-mail.
+- Veilige bankflow via CSV/XLS upload van de laatste 30 dagen.
 - Beschikbaar geld beheren.
+- Klikbare KPI's met maand/kwartaal/jaar grafiek.
 - Salarissen en medewerkers beheren.
 - Loonstroken uploaden, controleren, goedkeuren of afkeuren.
 - Belastingen beheren.
@@ -25,6 +28,8 @@ Maak en onderhoud een simpele interne administratie-cockpit voor AuraWash/B&T:
 - PDF's uit e-mail of handmatige upload koppelen aan facturen.
 - Slack reminders sturen voor interne deadlines.
 - Automatische klantmail sturen bij te ontvangen facturen die niet zijn overgeboekt.
+- Branded facturen maken vanuit klantprofiel.
+- Boekhouderpakket exporteren met kosten, cashflow, activa/passiva indicatie en bewijsstukken.
 - Export kunnen maken voor instanties als CSV en JSON.
 - E-mail automation kunnen triggeren vanuit de GitHub repo met het e-mailadres van de ontvanger.
 - Alles moet simpel genoeg zijn voor dagelijks gebruik zonder technische kennis.
@@ -84,6 +89,8 @@ Repo moet private blijven, omdat er loon- en financiele gegevens in staan.
 - `scripts/run-reminders.mjs`: stuurt Slack reminders en optionele klantmail.
 - `automation/README.md`: setup voor inbox, Slack en klantmail automation.
 - `automation/config.example.json`: voorbeeldregels voor automation.
+- `PRODUCT_BLUEPRINT.md`: productstrategie, onboarding en installatieregels.
+- `DESIGN.md`: EcomVault designregels.
 - `.github/workflows/send-email.yml`: handmatig te triggeren GitHub Actions e-mail automation.
 - `.github/workflows/inbox-automation.yml`: dagelijkse inbox/reminder automation.
 - `AGENTS.md`: korte projectregels voor Codex.
@@ -227,14 +234,14 @@ Belangrijk:
 
 ## UI-richting
 
-AuraWash brand richting:
+EcomVault brand richting:
 
-- Zwart/wit basis.
-- Lichtgrijs dashboard canvas.
-- AuraWash accent blauw: `#A7C7E7`.
-- Lettergevoel: Inter + Archivo Black vibe.
+- Ink Black `#0B0B0C` + Warm White `#F5F2ED` als basis.
+- Royal Blue `#2D5BFF` als enige actiekleur.
+- Champagne `#E8D9B8` als premium detailkleur.
+- Lettergevoel: Inter / Inter Tight, headings strak met `-0.02em`.
 - Geen marketing landing page. Eerste scherm moet de werktool zijn.
-- Dashboard moet compact, duidelijk en operationeel blijven.
+- Dashboard moet compact, duidelijk, senior en operationeel blijven.
 
 Gebruik bekende UI patronen:
 
