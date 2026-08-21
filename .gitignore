@@ -4,3 +4,7 @@ qa-screenshots/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+automation/documents/*
+automation/inbox-documents.json
+automation/reminder-log.json
+!automation/documents/.gitkeep

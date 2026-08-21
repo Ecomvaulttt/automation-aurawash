@@ -1,0 +1,15 @@
+{
+  "gmailQuery": "has:attachment (factuur OR invoice OR loonstrook OR salaris)",
+  "imapMailbox": "INBOX",
+  "inboxSinceDays": 45,
+  "slackChannel": "#administratie",
+  "payableReminderDays": 5,
+  "receivableReminderDays": 3,
+  "autoSendCustomerEmails": true,
+  "documentTypes": {
+    "te-betalen": "Facturen die AuraWash zelf moet betalen. Slack melding 5 dagen voor deadline als betaald = NEE.",
+    "te-ontvangen": "Facturen die klanten aan AuraWash moeten betalen. Slack melding 3 dagen voor deadline en klantmail als betaald = NEE.",
+    "vaste-last": "Terugkerende kosten zoals verzekering, telecom, onderhoud en abonnementen.",
+    "loonstrook": "Loonstroken per medewerker/periode."
+  }
+}

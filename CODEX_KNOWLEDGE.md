@@ -21,6 +21,10 @@ Maak en onderhoud een simpele interne administratie-cockpit voor AuraWash/B&T:
 - Belastingen beheren.
 - Te betalen facturen beheren.
 - Te ontvangen facturen beheren.
+- Documentendossier beheren voor facturen, loonstroken en vaste lasten.
+- PDF's uit e-mail of handmatige upload koppelen aan facturen.
+- Slack reminders sturen voor interne deadlines.
+- Automatische klantmail sturen bij te ontvangen facturen die niet zijn overgeboekt.
 - Export kunnen maken voor instanties als CSV en JSON.
 - E-mail automation kunnen triggeren vanuit de GitHub repo met het e-mailadres van de ontvanger.
 - Alles moet simpel genoeg zijn voor dagelijks gebruik zonder technische kennis.
@@ -36,6 +40,8 @@ Maak en onderhoud een simpele interne administratie-cockpit voor AuraWash/B&T:
 - Data start in `src/data.ts`
 - Lokale gebruikerswijzigingen blijven bewaard in `localStorage`
 - E-mail automation via GitHub Actions + `nodemailer`
+- Inbox automation via IMAP + `imapflow`
+- Slack reminders via `SLACK_WEBHOOK_URL`
 
 ## Commands
 
@@ -43,6 +49,9 @@ Maak en onderhoud een simpele interne administratie-cockpit voor AuraWash/B&T:
 npm install
 npm run dev
 npm run build
+npm run automation:sync
+npm run automation:reminders
+npm run automation:run
 ```
 
 `npm run build` doet drie dingen:
@@ -71,7 +80,12 @@ Repo moet private blijven, omdat er loon- en financiele gegevens in staan.
 - `src/components/ui/*`: lokale shadcn-style primitives.
 - `scripts/make-single-html.mjs`: maakt single-file HTML.
 - `scripts/send-email.mjs`: verstuurt workflow e-mail via SMTP-secrets.
+- `scripts/sync-inbox.mjs`: haalt factuur/loonstrook PDF's uit inbox en schrijft documentdata.
+- `scripts/run-reminders.mjs`: stuurt Slack reminders en optionele klantmail.
+- `automation/README.md`: setup voor inbox, Slack en klantmail automation.
+- `automation/config.example.json`: voorbeeldregels voor automation.
 - `.github/workflows/send-email.yml`: handmatig te triggeren GitHub Actions e-mail automation.
+- `.github/workflows/inbox-automation.yml`: dagelijkse inbox/reminder automation.
 - `AGENTS.md`: korte projectregels voor Codex.
 - `.ai/lessons.md`: projectlessons die toegepast moeten worden.
 
@@ -133,6 +147,12 @@ De app moet minimaal dit ondersteunen:
 - E-mail template maken in de app.
 - E-mail versturen via GitHub Actions workflow met ontvanger, onderwerp en bericht.
 - Reset naar Excel-startdata.
+- Automation tab openen.
+- Gmail/IMAP zoekregel aanpassen.
+- Slack kanaal/reminderdagen aanpassen.
+- Document uploaden voor factuur, vaste last of loonstrook.
+- Bij factuur op `Bekijk` klikken om gekoppelde data/PDF te zien.
+- Documentdata handmatig corrigeren.
 
 ## E-mail automation
 
@@ -160,6 +180,50 @@ Inputs:
 - `reply_to`: optioneel
 
 De app heeft daarnaast een `E-mail` tab met mailto-fallback.
+
+## Inbox, Slack en klantmail automation
+
+Doel:
+
+- Alle loonstroken, facturen en vaste lasten automatisch uit e-mail ophalen.
+- PDF-bijlagen lokaal opslaan onder `automation/documents/YYYY-MM/`.
+- Extractie-data opslaan in `automation/inbox-documents.json`.
+- Per document tonen: relatie, factuurnummer, bedrag, vervaldatum, status, betaald JA/NEE, opslagpad en extractietekst.
+- Te betalen facturen en vaste lasten: Slack melding 5 dagen voor deadline als `paid = NEE`.
+- Te ontvangen facturen: Slack melding 3 dagen voor deadline als `paid = NEE`.
+- Te ontvangen facturen: automatische klantmail alleen als `AUTO_SEND_CUSTOMER_EMAILS=true`.
+
+GitHub Secrets:
+
+```text
+IMAP_HOST
+IMAP_PORT
+IMAP_USER
+IMAP_PASS
+IMAP_MAILBOX
+SLACK_WEBHOOK_URL
+SMTP_HOST
+SMTP_PORT
+SMTP_USER
+SMTP_PASS
+SMTP_FROM
+EMAIL_REPLY_TO
+```
+
+GitHub Variables:
+
+```text
+INBOX_SINCE_DAYS=45
+PAYABLE_REMINDER_DAYS=5
+RECEIVABLE_REMINDER_DAYS=3
+AUTO_SEND_CUSTOMER_EMAILS=false
+```
+
+Belangrijk:
+
+- Zet `AUTO_SEND_CUSTOMER_EMAILS` standaard op `false` bij eerste installatie.
+- Eerst klantmailadressen/templates controleren, daarna pas op `true`.
+- `automation/inbox-documents.json`, `automation/reminder-log.json` en `automation/documents/*` zijn gevoelige output en worden niet gecommit.
 
 ## UI-richting
 

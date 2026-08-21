@@ -2,16 +2,20 @@ import { ChangeEvent, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   Banknote,
+  Bot,
   CalendarClock,
   CheckCircle2,
   ClipboardList,
+  Eye,
   FileArchive,
   FileCheck2,
   FileJson,
   FileSpreadsheet,
+  FileText,
   FolderUp,
   Gauge,
   Mail,
+  MessageSquareWarning,
   Plus,
   ReceiptText,
   Search,
@@ -30,8 +34,10 @@ import {
   fixedCosts as initialFixedCosts,
   payables as initialPayables,
   PayrollDoc,
+  InvoiceDocument,
   receivables as initialReceivables,
   salaries as initialSalaries,
+  sampleInvoiceDocuments,
   samplePayrollDocs,
   taxes as initialTaxes,
   Salary,
@@ -58,10 +64,32 @@ const today = new Date().toISOString().slice(0, 10);
 const githubActionsUrl =
   "https://github.com/Ecomvaulttt/automation-aurawash/actions/workflows/send-email.yml";
 
-type Tab = "overzicht" | "loonstroken" | "instanties" | "facturen" | "email";
+type Tab = "overzicht" | "loonstroken" | "instanties" | "facturen" | "automation" | "email";
 type PaidValue = "JA" | "NEE" | "JA (termijn)";
 type Balance = (typeof initialBalances)[number];
 type FixedCost = (typeof initialFixedCosts)[number];
+type DocumentType = InvoiceDocument["type"];
+
+type AutomationSettings = {
+  gmailAccount: string;
+  gmailQuery: string;
+  slackChannel: string;
+  payableReminderDays: number;
+  receivableReminderDays: number;
+  autoCustomerEmail: boolean;
+};
+
+type ReminderItem = {
+  id: string;
+  kind: "te-betalen" | "te-ontvangen";
+  relation: string;
+  invoice: string;
+  amount: number;
+  dueDate: string;
+  daysLeft: number | null;
+  urgency: "overdue" | "due" | "missing-date";
+  action: string;
+};
 
 function loadStored<T>(key: string, fallback: T): T {
   try {
@@ -114,6 +142,19 @@ function isPaidNo(value: string) {
   return value.trim().toUpperCase() === "NEE";
 }
 
+function parseIsoDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function daysUntil(value: string) {
+  const date = parseIsoDate(value);
+  if (!date) return null;
+  const start = new Date(`${today}T00:00:00`);
+  return Math.ceil((date.getTime() - start.getTime()) / 86_400_000);
+}
+
 function normalizePaid(value: string): PaidValue {
   return value.includes("termijn") ? "JA (termijn)" : value.trim().toUpperCase() === "JA" ? "JA" : "NEE";
 }
@@ -130,6 +171,83 @@ function statusTone(status: string) {
   return "neutral";
 }
 
+function buildReminders(
+  payables: Payable[],
+  receivables: Receivable[],
+  payableDays: number,
+  receivableDays: number,
+): ReminderItem[] {
+  const payableAlerts = payables
+    .filter((item) => isPaidNo(item.paid))
+    .map((item): ReminderItem | null => {
+      const left = daysUntil(item.deadline);
+      if (left === null) {
+        return {
+          id: `payable-${item.invoice}`,
+          kind: "te-betalen",
+          relation: item.company,
+          invoice: item.invoice,
+          amount: item.amount,
+          dueDate: item.deadline,
+          daysLeft: null,
+          urgency: "missing-date",
+          action: "Datum handmatig controleren",
+        };
+      }
+      if (left > payableDays) return null;
+      return {
+        id: `payable-${item.invoice}`,
+        kind: "te-betalen",
+        relation: item.company,
+        invoice: item.invoice,
+        amount: item.amount,
+        dueDate: item.deadline,
+        daysLeft: left,
+        urgency: left < 0 ? "overdue" : "due",
+        action: "Slack melding naar intern team",
+      };
+    })
+    .filter(Boolean) as ReminderItem[];
+
+  const receivableAlerts = receivables
+    .filter((item) => isPaidNo(item.paid))
+    .map((item): ReminderItem | null => {
+      const left = daysUntil(item.dueDate);
+      if (left === null) {
+        return {
+          id: `receivable-${item.invoice}`,
+          kind: "te-ontvangen",
+          relation: item.client,
+          invoice: item.invoice,
+          amount: item.amount,
+          dueDate: item.dueDate || "-",
+          daysLeft: null,
+          urgency: "missing-date",
+          action: "Vervaldatum toevoegen voor automatische klantmail",
+        };
+      }
+      if (left > receivableDays) return null;
+      return {
+        id: `receivable-${item.invoice}`,
+        kind: "te-ontvangen",
+        relation: item.client,
+        invoice: item.invoice,
+        amount: item.amount,
+        dueDate: item.dueDate,
+        daysLeft: left,
+        urgency: left < 0 ? "overdue" : "due",
+        action: "Slack melding + klantmail als betaling ontbreekt",
+      };
+    })
+    .filter(Boolean) as ReminderItem[];
+
+  return [...payableAlerts, ...receivableAlerts].sort((a, b) => {
+    const aDays = a.daysLeft ?? 9999;
+    const bDays = b.daysLeft ?? 9999;
+    return aDays - bDays;
+  });
+}
+
 function App() {
   const [tab, setTab] = useState<Tab>("overzicht");
   const [query, setQuery] = useState("");
@@ -140,6 +258,15 @@ function App() {
   const [payables, setPayables] = useStoredState<Payable[]>("aurawash-payables", initialPayables);
   const [receivables, setReceivables] = useStoredState<Receivable[]>("aurawash-receivables", initialReceivables);
   const [payrollDocs, setPayrollDocs] = useStoredState<PayrollDoc[]>("aurawash-payroll-docs", samplePayrollDocs);
+  const [invoiceDocs, setInvoiceDocs] = useStoredState<InvoiceDocument[]>("aurawash-invoice-documents", sampleInvoiceDocuments);
+  const [automationSettings, setAutomationSettings] = useStoredState<AutomationSettings>("aurawash-automation-settings", {
+    gmailAccount: "info@ecomvault.nl",
+    gmailQuery: "has:attachment (factuur OR invoice OR loonstrook OR salaris)",
+    slackChannel: "#administratie",
+    payableReminderDays: 5,
+    receivableReminderDays: 3,
+    autoCustomerEmail: true,
+  });
   const [employee, setEmployee] = useState(initialSalaries[0]?.name ?? "");
   const [period, setPeriod] = useState("Mei 2026");
   const [newBalance, setNewBalance] = useState({ label: "", amount: "" });
@@ -147,12 +274,22 @@ function App() {
   const [newPayable, setNewPayable] = useState({ company: "", invoice: "", amount: "", deadline: "" });
   const [newReceivable, setNewReceivable] = useState({ client: "", invoice: "", amount: "", dueDate: "" });
   const [newTax, setNewTax] = useState({ type: "", amount: "", deadline: "" });
+  const [selectedDocId, setSelectedDocId] = useState(sampleInvoiceDocuments[0]?.id ?? "");
+  const [newDocument, setNewDocument] = useState({
+    type: "te-betalen" as DocumentType,
+    relation: "",
+    invoiceNumber: "",
+    amount: "",
+    dueDate: "",
+    customerEmail: "",
+  });
   const [emailDraft, setEmailDraft] = useStoredState("aurawash-email-draft", {
     to: "",
     subject: "AuraWash administratie update",
     body: "Hi,\n\nDe AuraWash administratie is bijgewerkt. De actuele loonstroken, facturen en betaalstatussen staan klaar in het exportpakket.\n\nGroet,\nAuraWash",
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const invoiceFileInputRef = useRef<HTMLInputElement>(null);
   const activeSalaries = salaries.filter(isActiveEmployee);
 
   const totals = useMemo(() => {
@@ -168,6 +305,20 @@ function App() {
     const fixedOpen = sum(fixedCosts.map((item) => Number(item.open || 0)));
     return { cash, salary, openTaxes, openPayables, expectedReceivables, fixedOpen };
   }, [balances, fixedCosts, payables, receivables, salaries, taxes]);
+
+  const reminders = useMemo(
+    () =>
+      buildReminders(
+        payables,
+        receivables,
+        automationSettings.payableReminderDays,
+        automationSettings.receivableReminderDays,
+      ),
+    [automationSettings.payableReminderDays, automationSettings.receivableReminderDays, payables, receivables],
+  );
+
+  const selectedDoc = invoiceDocs.find((doc) => doc.id === selectedDocId) ?? invoiceDocs[0];
+  const linkedDocumentCount = invoiceDocs.filter((doc) => doc.linkedInvoice).length;
 
   const linkedActiveEmployees = activeSalaries.filter((salary) =>
     payrollDocs.some((doc) => doc.employee === salary.name),
@@ -213,6 +364,56 @@ function App() {
 
     setPayrollDocs((current) => [...additions, ...current]);
     event.target.value = "";
+  }
+
+  function handleInvoiceFiles(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+
+    const additions = files.map((file, index): InvoiceDocument => {
+      const invoiceNumber = newDocument.invoiceNumber.trim() || file.name.replace(/\.[^.]+$/, "");
+      const relation = newDocument.relation.trim() || "Onbekend";
+      const amount = Number(newDocument.amount);
+      const type = newDocument.type;
+      const paid = "NEE";
+      return {
+        id: `uploaded-doc-${Date.now()}-${index}`,
+        type,
+        source: "upload",
+        direction: type === "te-betalen" || type === "vaste-last" ? "inkomend" : "uitgaand",
+        relation,
+        invoiceNumber,
+        subject: `${relation} ${invoiceNumber}`,
+        sender: type === "te-ontvangen" ? "AuraWash" : relation,
+        customerEmail: newDocument.customerEmail.trim() || undefined,
+        fileName: file.name,
+        mimeType: file.type || "application/pdf",
+        receivedAt: today,
+        dueDate: newDocument.dueDate.trim(),
+        amount: Number.isNaN(amount) ? 0 : amount,
+        paid,
+        status: "Controle",
+        category: type === "vaste-last" ? "Vaste lasten" : type === "loonstrook" ? "Loonstrook" : "Factuur",
+        extractedText: "Handmatig geupload. Controleer bedrag, relatie, factuurnummer en vervaldatum.",
+        previewUrl: URL.createObjectURL(file),
+        linkedInvoice: invoiceNumber,
+      };
+    });
+
+    setInvoiceDocs((current) => [...additions, ...current]);
+    setSelectedDocId(additions[0]?.id ?? selectedDocId);
+    event.target.value = "";
+  }
+
+  function updateInvoiceDoc(id: string, patch: Partial<InvoiceDocument>) {
+    setInvoiceDocs((current) => current.map((doc) => (doc.id === id ? { ...doc, ...patch } : doc)));
+  }
+
+  function removeInvoiceDoc(id: string) {
+    setInvoiceDocs((current) => current.filter((doc) => doc.id !== id));
+    if (selectedDocId === id) {
+      setSelectedDocId(invoiceDocs.find((doc) => doc.id !== id)?.id ?? "");
+    }
   }
 
   function updatePayroll(id: string, patch: Partial<PayrollDoc>) {
@@ -338,6 +539,8 @@ function App() {
     setPayables(initialPayables);
     setReceivables(initialReceivables);
     setPayrollDocs(samplePayrollDocs);
+    setInvoiceDocs(sampleInvoiceDocuments);
+    setSelectedDocId(sampleInvoiceDocuments[0]?.id ?? "");
   }
 
   const payrollRows: ExportRow[] = payrollDocs.map((doc) => ({
@@ -364,6 +567,9 @@ function App() {
     fixedCosts,
     payables,
     receivables,
+    invoiceDocs,
+    reminders,
+    automationSettings,
     totals,
   };
 
@@ -420,6 +626,7 @@ function App() {
               ["loonstroken", ReceiptText, "Loonstroken"],
               ["instanties", ClipboardList, "Instanties"],
               ["facturen", WalletCards, "Facturen"],
+              ["automation", Bot, "Automation"],
               ["email", Mail, "E-mail"],
             ].map(([id, Icon, label]) => (
               <button
@@ -861,8 +1068,340 @@ function App() {
                 <Preview label="Open facturen" value={euro.format(totals.openPayables)} />
                 <Preview label="Te ontvangen" value={euro.format(totals.expectedReceivables)} />
                 <Preview label="Vaste lasten open" value={euro.format(totals.fixedOpen)} />
+                <Preview label="Documenten uit inbox" value={`${invoiceDocs.length} PDF/data items`} />
+                <Preview label="Automation alerts" value={`${reminders.length} opvolgpunten`} />
                 <Preview label="Bron Excel" value="B&T _ AuraWash Overzicht Mei 2026.xlsx" wide />
                 <Preview label="Voorbeeld PDF" value="115 Murabe-A.--P07.pdf" wide />
+              </div>
+            </Card>
+          </section>
+        )}
+
+        {tab === "automation" && (
+          <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+            <div className="grid gap-5">
+              <Card className="overflow-hidden">
+                <SectionHeader title="Inbox automation" note="Gmail, PDF's, Slack en klantmail" />
+                <div className="grid gap-4 p-5">
+                  <Field label="Gmail account">
+                    <Input
+                      value={automationSettings.gmailAccount}
+                      onChange={(event) =>
+                        setAutomationSettings((current) => ({ ...current, gmailAccount: event.target.value }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Zoekregel inbox">
+                    <Input
+                      value={automationSettings.gmailQuery}
+                      onChange={(event) =>
+                        setAutomationSettings((current) => ({ ...current, gmailQuery: event.target.value }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Slack kanaal">
+                    <Input
+                      value={automationSettings.slackChannel}
+                      onChange={(event) =>
+                        setAutomationSettings((current) => ({ ...current, slackChannel: event.target.value }))
+                      }
+                    />
+                  </Field>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Te betalen melding">
+                      <Input
+                        type="number"
+                        min="1"
+                        value={automationSettings.payableReminderDays}
+                        onChange={(event) =>
+                          setAutomationSettings((current) => ({
+                            ...current,
+                            payableReminderDays: Number(event.target.value),
+                          }))
+                        }
+                      />
+                    </Field>
+                    <Field label="Te ontvangen melding">
+                      <Input
+                        type="number"
+                        min="1"
+                        value={automationSettings.receivableReminderDays}
+                        onChange={(event) =>
+                          setAutomationSettings((current) => ({
+                            ...current,
+                            receivableReminderDays: Number(event.target.value),
+                          }))
+                        }
+                      />
+                    </Field>
+                  </div>
+                  <label className="flex items-center justify-between gap-4 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                    <span className="text-sm font-semibold text-neutral-700">Automatisch klantmail sturen bij te ontvangen facturen</span>
+                    <input
+                      type="checkbox"
+                      checked={automationSettings.autoCustomerEmail}
+                      onChange={(event) =>
+                        setAutomationSettings((current) => ({ ...current, autoCustomerEmail: event.target.checked }))
+                      }
+                    />
+                  </label>
+                </div>
+              </Card>
+
+              <Card className="overflow-hidden">
+                <SectionHeader title="Document toevoegen" note="Factuur, vaste last of loonstrook" />
+                <div className="grid gap-4 p-5">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Type">
+                      <Select
+                        value={newDocument.type}
+                        onChange={(event) =>
+                          setNewDocument((current) => ({ ...current, type: event.target.value as DocumentType }))
+                        }
+                      >
+                        <option value="te-betalen">Te betalen factuur</option>
+                        <option value="te-ontvangen">Te ontvangen factuur</option>
+                        <option value="vaste-last">Vaste last</option>
+                        <option value="loonstrook">Loonstrook</option>
+                      </Select>
+                    </Field>
+                    <Field label="Relatie">
+                      <Input
+                        value={newDocument.relation}
+                        onChange={(event) =>
+                          setNewDocument((current) => ({ ...current, relation: event.target.value }))
+                        }
+                        placeholder="Klant, leverancier of medewerker"
+                      />
+                    </Field>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Field label="Factuur/kenmerk">
+                      <Input
+                        value={newDocument.invoiceNumber}
+                        onChange={(event) =>
+                          setNewDocument((current) => ({ ...current, invoiceNumber: event.target.value }))
+                        }
+                      />
+                    </Field>
+                    <Field label="Bedrag">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={newDocument.amount}
+                        onChange={(event) =>
+                          setNewDocument((current) => ({ ...current, amount: event.target.value }))
+                        }
+                      />
+                    </Field>
+                    <Field label="Vervaldatum">
+                      <Input
+                        value={newDocument.dueDate}
+                        onChange={(event) =>
+                          setNewDocument((current) => ({ ...current, dueDate: event.target.value }))
+                        }
+                        placeholder="YYYY-MM-DD"
+                      />
+                    </Field>
+                  </div>
+                  <Field label="Klant e-mail">
+                    <Input
+                      type="email"
+                      value={newDocument.customerEmail}
+                      onChange={(event) =>
+                        setNewDocument((current) => ({ ...current, customerEmail: event.target.value }))
+                      }
+                      placeholder="alleen nodig voor te ontvangen facturen"
+                    />
+                  </Field>
+                  <input
+                    ref={invoiceFileInputRef}
+                    className="hidden"
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    multiple
+                    onChange={handleInvoiceFiles}
+                  />
+                  <Button variant="accent" onClick={() => invoiceFileInputRef.current?.click()}>
+                    <Upload size={18} />
+                    PDF/document uploaden
+                  </Button>
+                </div>
+              </Card>
+
+              <Card className="overflow-hidden">
+                <SectionHeader title="Automatische meldingen" note={`${reminders.length} opvolgpunten`} />
+                <div className="grid divide-y divide-neutral-100">
+                  {reminders.map((reminder) => (
+                    <article key={reminder.id} className="grid gap-3 p-4 sm:grid-cols-[1fr_160px] sm:items-center">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <MessageSquareWarning size={18} className="text-neutral-500" />
+                          <h3 className="font-semibold text-neutral-950">{reminder.relation}</h3>
+                          <Badge tone={reminder.urgency === "overdue" ? "danger" : reminder.urgency === "missing-date" ? "warn" : "accent"}>
+                            {reminder.urgency === "overdue"
+                              ? "Te laat"
+                              : reminder.urgency === "missing-date"
+                                ? "Datum mist"
+                                : `${reminder.daysLeft} dagen`}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-neutral-600">
+                          {reminder.kind} · {reminder.invoice} · {euro.format(reminder.amount)} · {reminder.action}
+                        </p>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() =>
+                          setEmailDraft({
+                            to: receivables.find((item) => item.invoice === reminder.invoice)?.customerEmail ?? "",
+                            subject: `Herinnering factuur ${reminder.invoice}`,
+                            body: `Hi,\n\nWe zien dat factuur ${reminder.invoice} van ${euro.format(reminder.amount)} nog open staat. Wil je deze uiterlijk ${reminder.dueDate} overboeken?\n\nGroet,\nAuraWash`,
+                          })
+                        }
+                      >
+                        <Mail size={16} />
+                        Mail
+                      </Button>
+                    </article>
+                  ))}
+                  {!reminders.length && (
+                    <div className="p-5 text-sm text-neutral-600">Geen open reminders op basis van de huidige datums.</div>
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            <Card className="overflow-hidden">
+              <SectionHeader title="Documentendossier" note={`${invoiceDocs.length} documenten · ${linkedDocumentCount} gekoppeld`} />
+              <div className="grid min-h-[720px] lg:grid-cols-[360px_1fr]">
+                <div className="border-b border-neutral-200 lg:border-b-0 lg:border-r">
+                  <div className="grid max-h-[720px] overflow-y-auto">
+                    {invoiceDocs.map((doc) => (
+                      <button
+                        key={doc.id}
+                        onClick={() => setSelectedDocId(doc.id)}
+                        className={cn(
+                          "grid gap-2 border-b border-neutral-100 p-4 text-left transition hover:bg-neutral-50",
+                          selectedDoc?.id === doc.id && "bg-[#A7C7E7]/25",
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate font-semibold text-neutral-950">{doc.relation}</span>
+                          <Badge tone={doc.paid === "NEE" ? "danger" : "good"}>{doc.paid}</Badge>
+                        </div>
+                        <span className="truncate text-sm text-neutral-600">{doc.invoiceNumber} · {doc.fileName}</span>
+                        <span className="text-xs font-semibold uppercase text-neutral-500">{doc.type} · {doc.source}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedDoc && (
+                  <div className="grid gap-5 p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <FileText size={20} className="text-neutral-500" />
+                          <h2 className="truncate text-xl font-bold text-neutral-950">{selectedDoc.fileName}</h2>
+                        </div>
+                        <p className="mt-1 text-sm text-neutral-600">{selectedDoc.subject}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        {selectedDoc.previewUrl && (
+                          <a
+                            href={selectedDoc.previewUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-white px-3 text-sm font-semibold text-neutral-950 ring-1 ring-neutral-200 transition hover:bg-neutral-100"
+                          >
+                            <Eye size={16} />
+                            PDF
+                          </a>
+                        )}
+                        <Button variant="danger" size="sm" onClick={() => removeInvoiceDoc(selectedDoc.id)}>
+                          <X size={16} />
+                          Verwijder
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Relatie">
+                        <Input
+                          value={selectedDoc.relation}
+                          onChange={(event) => updateInvoiceDoc(selectedDoc.id, { relation: event.target.value })}
+                        />
+                      </Field>
+                      <Field label="Factuur/kenmerk">
+                        <Input
+                          value={selectedDoc.invoiceNumber}
+                          onChange={(event) => updateInvoiceDoc(selectedDoc.id, { invoiceNumber: event.target.value })}
+                        />
+                      </Field>
+                      <Field label="Bedrag">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={selectedDoc.amount}
+                          onChange={(event) => updateInvoiceDoc(selectedDoc.id, { amount: Number(event.target.value) })}
+                        />
+                      </Field>
+                      <Field label="Vervaldatum">
+                        <Input
+                          value={selectedDoc.dueDate}
+                          onChange={(event) => updateInvoiceDoc(selectedDoc.id, { dueDate: event.target.value })}
+                        />
+                      </Field>
+                      <Field label="Status">
+                        <Select
+                          value={selectedDoc.status}
+                          onChange={(event) =>
+                            updateInvoiceDoc(selectedDoc.id, { status: event.target.value as InvoiceDocument["status"] })
+                          }
+                        >
+                          <option>Nieuw</option>
+                          <option>Controle</option>
+                          <option>Goedgekeurd</option>
+                          <option>Afgekeurd</option>
+                          <option>Betaald</option>
+                          <option>Niet betaald</option>
+                        </Select>
+                      </Field>
+                      <Field label="Betaald">
+                        <PaidSelect
+                          value={selectedDoc.paid}
+                          onChange={(paid) =>
+                            updateInvoiceDoc(selectedDoc.id, {
+                              paid,
+                              status: paid === "NEE" ? "Niet betaald" : "Betaald",
+                            })
+                          }
+                        />
+                      </Field>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Preview label="Afzender" value={`${selectedDoc.sender}${selectedDoc.senderEmail ? ` · ${selectedDoc.senderEmail}` : ""}`} />
+                      <Preview label="Ontvangen" value={selectedDoc.receivedAt} />
+                      <Preview label="Opslag" value={selectedDoc.storagePath || "Upload in browser-sessie"} wide />
+                      <Preview label="Extractie" value={selectedDoc.extractedText || "Nog geen tekstextractie beschikbaar"} wide />
+                    </div>
+
+                    {selectedDoc.previewUrl ? (
+                      <iframe
+                        title={selectedDoc.fileName}
+                        src={selectedDoc.previewUrl}
+                        className="min-h-[360px] w-full rounded-md border border-neutral-200 bg-neutral-50"
+                      />
+                    ) : (
+                      <div className="grid min-h-[260px] place-items-center rounded-md border border-dashed border-neutral-300 bg-neutral-50 p-6 text-center text-sm text-neutral-600">
+                        PDF-preview verschijnt hier bij browser-upload. Automatisch gefetchte PDF's staan lokaal onder `automation/documents`.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </Card>
           </section>
@@ -961,7 +1500,7 @@ function App() {
             <Card className="overflow-hidden">
               <SectionHeader title="Te betalen facturen" note={`${payables.filter((p) => isPaidNo(p.paid)).length} open volgens kolom H`} />
               <div className="table-scroll overflow-x-auto">
-                <table className="w-full min-w-[900px] text-left text-sm">
+                <table className="w-full min-w-[1060px] text-left text-sm">
                   <thead className="bg-neutral-950 text-white">
                     <tr>
                       <Th>Bedrijf</Th>
@@ -971,46 +1510,67 @@ function App() {
                       <Th>Prioriteit</Th>
                       <Th>Status</Th>
                       <Th>Betaald H</Th>
+                      <Th>Data</Th>
                       <Th>Opmerking</Th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-100">
-                    {filteredPayables.map(({ item, index }) => (
-                      <tr key={`${item.company}-${item.invoice}`}>
-                        <Td className="font-semibold text-neutral-950">{item.company}</Td>
-                        <Td>{item.invoice}</Td>
-                        <Td>{euro.format(item.amount)}</Td>
-                        <Td>{item.deadline}</Td>
-                        <Td><Badge tone={statusTone(item.priority)}>{item.priority}</Badge></Td>
-                        <Td>
-                          <Select
-                            value={item.status}
-                            onChange={(event) =>
-                              setPayables((current) => updateIndex(current, index, { status: event.target.value }))
-                            }
-                          >
-                            <option>OPEN</option>
-                            <option>Open</option>
-                            <option>Betaald</option>
-                            <option>in behandeling</option>
-                          </Select>
-                        </Td>
-                        <Td>
-                          <PaidSelect
-                            value={item.paid}
-                            onChange={(paid) =>
-                              setPayables((current) =>
-                                updateIndex(current, index, {
-                                  paid,
-                                  status: paid === "NEE" ? "OPEN" : "Betaald",
-                                }),
-                              )
-                            }
-                          />
-                        </Td>
-                        <Td className="max-w-[260px] truncate">{item.note || "-"}</Td>
-                      </tr>
-                    ))}
+                    {filteredPayables.map(({ item, index }) => {
+                      const matchingDoc = invoiceDocs.find((doc) => doc.invoiceNumber === item.invoice || doc.linkedInvoice === item.invoice);
+                      return (
+                        <tr key={`${item.company}-${item.invoice}`}>
+                          <Td className="font-semibold text-neutral-950">{item.company}</Td>
+                          <Td>{item.invoice}</Td>
+                          <Td>{euro.format(item.amount)}</Td>
+                          <Td>{item.deadline}</Td>
+                          <Td><Badge tone={statusTone(item.priority)}>{item.priority}</Badge></Td>
+                          <Td>
+                            <Select
+                              value={item.status}
+                              onChange={(event) =>
+                                setPayables((current) => updateIndex(current, index, { status: event.target.value }))
+                              }
+                            >
+                              <option>OPEN</option>
+                              <option>Open</option>
+                              <option>Betaald</option>
+                              <option>in behandeling</option>
+                            </Select>
+                          </Td>
+                          <Td>
+                            <PaidSelect
+                              value={item.paid}
+                              onChange={(paid) =>
+                                setPayables((current) =>
+                                  updateIndex(current, index, {
+                                    paid,
+                                    status: paid === "NEE" ? "OPEN" : "Betaald",
+                                  }),
+                                )
+                              }
+                            />
+                          </Td>
+                          <Td>
+                            {matchingDoc ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedDocId(matchingDoc.id);
+                                  setTab("automation");
+                                }}
+                              >
+                                <Eye size={16} />
+                                Bekijk
+                              </Button>
+                            ) : (
+                              <Badge tone="warn">Geen PDF</Badge>
+                            )}
+                          </Td>
+                          <Td className="max-w-[260px] truncate">{item.note || "-"}</Td>
+                        </tr>
+                      );
+                    })}
                     <tr className="bg-neutral-50">
                       <Td>
                         <Input
@@ -1045,6 +1605,7 @@ function App() {
                       <Td><Badge tone="warn">Middel</Badge></Td>
                       <Td>OPEN</Td>
                       <Td><Badge tone="danger">NEE</Badge></Td>
+                      <Td><Badge tone="warn">Upload</Badge></Td>
                       <Td>
                         <Button variant="accent" size="sm" onClick={addPayable}>
                           <Plus size={16} />
@@ -1070,45 +1631,66 @@ function App() {
                       <Th>Vervaldatum</Th>
                       <Th>Status</Th>
                       <Th>Betaald J</Th>
+                      <Th>Data</Th>
                       <Th>Actie</Th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-100">
-                    {filteredReceivables.map(({ item, index }) => (
-                      <tr key={`${item.client}-${item.invoice}`}>
-                        <Td className="font-semibold text-neutral-950">{item.client}</Td>
-                        <Td>{item.invoice}</Td>
-                        <Td>{euro.format(item.amount)}</Td>
-                        <Td>{item.invoiceDate || "-"}</Td>
-                        <Td>{item.dueDate || "-"}</Td>
-                        <Td>
-                          <Select
-                            value={item.status}
-                            onChange={(event) =>
-                              setReceivables((current) => updateIndex(current, index, { status: event.target.value }))
-                            }
-                          >
-                            <option>in behandeling</option>
-                            <option>Betaald</option>
-                            <option>Open</option>
-                          </Select>
-                        </Td>
-                        <Td>
-                          <PaidSelect
-                            value={item.paid}
-                            onChange={(paid) =>
-                              setReceivables((current) =>
-                                updateIndex(current, index, {
-                                  paid,
-                                  status: paid === "NEE" ? "in behandeling" : "Betaald",
-                                }),
-                              )
-                            }
-                          />
-                        </Td>
-                        <Td className="max-w-[260px] truncate">{item.action || "-"}</Td>
-                      </tr>
-                    ))}
+                    {filteredReceivables.map(({ item, index }) => {
+                      const matchingDoc = invoiceDocs.find((doc) => doc.invoiceNumber === item.invoice || doc.linkedInvoice === item.invoice);
+                      return (
+                        <tr key={`${item.client}-${item.invoice}`}>
+                          <Td className="font-semibold text-neutral-950">{item.client}</Td>
+                          <Td>{item.invoice}</Td>
+                          <Td>{euro.format(item.amount)}</Td>
+                          <Td>{item.invoiceDate || "-"}</Td>
+                          <Td>{item.dueDate || "-"}</Td>
+                          <Td>
+                            <Select
+                              value={item.status}
+                              onChange={(event) =>
+                                setReceivables((current) => updateIndex(current, index, { status: event.target.value }))
+                              }
+                            >
+                              <option>in behandeling</option>
+                              <option>Betaald</option>
+                              <option>Open</option>
+                            </Select>
+                          </Td>
+                          <Td>
+                            <PaidSelect
+                              value={item.paid}
+                              onChange={(paid) =>
+                                setReceivables((current) =>
+                                  updateIndex(current, index, {
+                                    paid,
+                                    status: paid === "NEE" ? "in behandeling" : "Betaald",
+                                  }),
+                                )
+                              }
+                            />
+                          </Td>
+                          <Td>
+                            {matchingDoc ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedDocId(matchingDoc.id);
+                                  setTab("automation");
+                                }}
+                              >
+                                <Eye size={16} />
+                                Bekijk
+                              </Button>
+                            ) : (
+                              <Badge tone="warn">Geen PDF</Badge>
+                            )}
+                          </Td>
+                          <Td className="max-w-[260px] truncate">{item.action || "-"}</Td>
+                        </tr>
+                      );
+                    })}
                     <tr className="bg-neutral-50">
                       <Td>
                         <Input
@@ -1143,6 +1725,7 @@ function App() {
                       </Td>
                       <Td>in behandeling</Td>
                       <Td><Badge tone="danger">NEE</Badge></Td>
+                      <Td><Badge tone="warn">Upload</Badge></Td>
                       <Td>
                         <Button variant="accent" size="sm" onClick={addReceivable}>
                           <Plus size={16} />

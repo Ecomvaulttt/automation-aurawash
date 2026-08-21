@@ -13,6 +13,10 @@ Interne administratie-app voor AuraWash/B&T op basis van het Excel-overzicht en 
 - Te ontvangen facturen beheren op basis van kolom J `Beataald`.
 - Export naar CSV en JSON voor instanties.
 - E-mail automation via GitHub Actions of directe mailto-template.
+- Inbox automation voor facturen, loonstroken en vaste lasten via IMAP.
+- Documentendossier met PDF/data-preview per factuur.
+- Slack reminders voor deadlines.
+- Automatische klantmail voor te ontvangen facturen wanneer betaling nog niet binnen is.
 - Lokale wijzigingen blijven bewaard in `localStorage`.
 
 ## Starten
@@ -53,6 +57,57 @@ SMTP_FROM
 Daarna kun je via `Actions > Send automation email > Run workflow` een ontvanger, onderwerp en bericht invullen.
 
 De app bevat ook een `E-mail` tab met een mailtemplate en directe `mailto` knop.
+
+## Inbox, Slack en klantmail automation
+
+De app bevat een `Automation` tab voor:
+
+- Facturen/loonstroken/vaste lasten uit de inbox registreren.
+- PDF/document uploaden en direct per factuur openen.
+- Factuurdata controleren: relatie, factuurnummer, bedrag, vervaldatum, status en betaald JA/NEE.
+- Reminderregels beheren.
+
+Scripts:
+
+```bash
+npm run automation:sync
+npm run automation:reminders
+npm run automation:run
+```
+
+GitHub workflow:
+
+```text
+.github/workflows/inbox-automation.yml
+```
+
+Benodigde GitHub Secrets:
+
+```text
+IMAP_HOST
+IMAP_PORT
+IMAP_USER
+IMAP_PASS
+IMAP_MAILBOX
+SLACK_WEBHOOK_URL
+SMTP_HOST
+SMTP_PORT
+SMTP_USER
+SMTP_PASS
+SMTP_FROM
+EMAIL_REPLY_TO
+```
+
+GitHub Variables:
+
+```text
+INBOX_SINCE_DAYS=45
+PAYABLE_REMINDER_DAYS=5
+RECEIVABLE_REMINDER_DAYS=3
+AUTO_SEND_CUSTOMER_EMAILS=false
+```
+
+Zet `AUTO_SEND_CUSTOMER_EMAILS` pas op `true` wanneer klantmailadressen en templates gecontroleerd zijn.
 
 ## Belangrijke dataregel
 

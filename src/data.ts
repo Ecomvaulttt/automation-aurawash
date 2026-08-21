@@ -25,6 +25,7 @@ export type Payable = {
   status: string;
   note: string;
   paid: string;
+  documentIds?: string[];
 };
 
 export type Receivable = {
@@ -36,6 +37,8 @@ export type Receivable = {
   status: string;
   action: string;
   paid: string;
+  customerEmail?: string;
+  documentIds?: string[];
 };
 
 export type PayrollDoc = {
@@ -49,6 +52,32 @@ export type PayrollDoc = {
   net: number;
   payrollNumber?: string;
   role?: string;
+};
+
+export type InvoiceDocument = {
+  id: string;
+  type: "te-betalen" | "te-ontvangen" | "loonstrook" | "vaste-last";
+  source: "email" | "upload" | "excel";
+  direction: "uitgaand" | "inkomend";
+  relation: string;
+  invoiceNumber: string;
+  subject: string;
+  sender: string;
+  senderEmail?: string;
+  customerEmail?: string;
+  fileName: string;
+  mimeType: string;
+  receivedAt: string;
+  dueDate: string;
+  amount: number;
+  paid: "JA" | "NEE" | "JA (termijn)";
+  status: "Nieuw" | "Controle" | "Goedgekeurd" | "Afgekeurd" | "Betaald" | "Niet betaald";
+  category: string;
+  extractedText?: string;
+  storagePath?: string;
+  previewUrl?: string;
+  linkedInvoice?: string;
+  reminderLog?: string[];
 };
 
 export const balances = [
@@ -143,5 +172,75 @@ export const samplePayrollDocs: PayrollDoc[] = [
     net: 2296.45,
     payrollNumber: "115wn0005",
     role: "Autopoetser",
+  },
+];
+
+export const sampleInvoiceDocuments: InvoiceDocument[] = [
+  {
+    id: "doc-cartec-70954",
+    type: "te-betalen",
+    source: "email",
+    direction: "inkomend",
+    relation: "Cartec",
+    invoiceNumber: "70954",
+    subject: "Factuur 70954 - Cartec",
+    sender: "Cartec",
+    senderEmail: "administratie@cartec.nl",
+    fileName: "2026-04-13 Cartec - Factuur 70954.pdf",
+    mimeType: "application/pdf",
+    receivedAt: "2026-04-13",
+    dueDate: "2026-04-27",
+    amount: 2191.75,
+    paid: "NEE",
+    status: "Niet betaald",
+    category: "Poetsproducten",
+    extractedText: "Leverancier: Cartec. Factuur: 70954. Bedrag: EUR 2.191,75. Vervaldatum: 2026-04-27.",
+    storagePath: "automation/documents/2026-04/2026-04-13 Cartec - Factuur 70954.pdf",
+    linkedInvoice: "70954",
+    reminderLog: ["Slack-alert 5 dagen vooraf"],
+  },
+  {
+    id: "doc-shisha-vf260029",
+    type: "te-ontvangen",
+    source: "email",
+    direction: "uitgaand",
+    relation: "Shishacompany",
+    invoiceNumber: "VF260029",
+    subject: "AuraWash factuur VF260029",
+    sender: "AuraWash",
+    customerEmail: "administratie@shishacompany.nl",
+    fileName: "2026-06-30 AuraWash - Factuur VF260029.pdf",
+    mimeType: "application/pdf",
+    receivedAt: "2026-06-30",
+    dueDate: "2026-07-14",
+    amount: 1149.5,
+    paid: "NEE",
+    status: "Controle",
+    category: "Te ontvangen factuur",
+    extractedText: "Klant: Shishacompany. Factuur: VF260029. Bedrag: EUR 1.149,50. Betaald: NEE.",
+    storagePath: "automation/documents/2026-06/2026-06-30 AuraWash - Factuur VF260029.pdf",
+    linkedInvoice: "VF260029",
+    reminderLog: ["Slack-alert 3 dagen vooraf", "Klantmail klaarzetten"],
+  },
+  {
+    id: "doc-payroll-anas-p07",
+    type: "loonstrook",
+    source: "upload",
+    direction: "uitgaand",
+    relation: "Anas Murabe",
+    invoiceNumber: "115wn0005",
+    subject: "Loonstrook Anas Murabe P07",
+    sender: "AuraWash",
+    fileName: "115 Murabe-A.--P07.pdf",
+    mimeType: "application/pdf",
+    receivedAt: "2026-08-16",
+    dueDate: "2026-07-31",
+    amount: 2296.45,
+    paid: "JA",
+    status: "Goedgekeurd",
+    category: "Loonstrook",
+    extractedText: "Medewerker: Anas Murabe. Periode: 07 = Juli 2026. Netto: EUR 2.296,45.",
+    storagePath: "/Users/mac/Downloads/115 Murabe-A.--P07.pdf",
+    linkedInvoice: "115wn0005",
   },
 ];
