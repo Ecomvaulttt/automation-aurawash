@@ -92,6 +92,7 @@ Repo moet private blijven, omdat er loon- en financiele gegevens in staan.
 - `automation/config.example.json`: voorbeeldregels voor automation.
 - `PRODUCT_BLUEPRINT.md`: productstrategie, onboarding en installatieregels.
 - `DESIGN.md`: EcomVault designregels.
+- `INSTALLATION_STACK.md`: exact wat nodig is voor demo, live automation en V2 productie.
 - `.github/workflows/send-email.yml`: handmatig te triggeren GitHub Actions e-mail automation.
 - `.github/workflows/inbox-automation.yml`: dagelijkse inbox/reminder automation.
 - `AGENTS.md`: korte projectregels voor Codex.

@@ -80,6 +80,8 @@ Start bij de `Setup` tab:
 
 ## Wat moet geinstalleerd/gekoppeld worden
 
+Zie ook `INSTALLATION_STACK.md`.
+
 Minimaal voor een werkende demo:
 
 ```bash

@@ -1,5 +1,6 @@
 import { ChangeEvent, useMemo, useRef, useState } from "react";
 import {
+  Activity,
   ArrowDownToLine,
   Banknote,
   BarChart3,
@@ -20,6 +21,7 @@ import {
   FolderUp,
   Gauge,
   Landmark,
+  LockKeyhole,
   Mail,
   MessageSquareWarning,
   Palette,
@@ -29,6 +31,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  TimerReset,
   Upload,
   UserRound,
   WalletCards,
@@ -603,6 +606,11 @@ function App() {
   const payrollCompletion = activeSalaries.length
     ? Math.round((linkedActiveEmployees.length / activeSalaries.length) * 100)
     : 0;
+  const proofCoverage = invoiceDocs.length
+    ? Math.round((linkedDocumentCount / invoiceDocs.length) * 100)
+    : 0;
+  const systemScore = Math.round((onboardingProgress + payrollCompletion + proofCoverage) / 3);
+  const nextReminder = reminders[0];
 
   const payrollMonths = Array.from(new Set(payrollDocs.map((doc) => doc.period))).filter(Boolean);
   const selectedPayrollProfile =
@@ -1002,9 +1010,9 @@ function App() {
   )}&body=${encodeURIComponent(emailDraft.body)}`;
 
   return (
-    <main className="min-h-[100dvh] bg-[#F5F2ED] text-[#0B0B0C]">
+    <main className="ev-canvas min-h-[100dvh] text-[#0B0B0C]">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="rounded-2xl border border-[#E8D9B8]/70 bg-[#0B0B0C] text-[#F5F2ED] shadow-sm">
+        <header className="ev-elevated overflow-hidden rounded-2xl border border-[#E8D9B8]/20 bg-[#0B0B0C] text-[#F5F2ED]">
           <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 items-center gap-4">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#E8D9B8]/20 bg-[#17171A]">
@@ -1064,6 +1072,16 @@ function App() {
           </nav>
         </header>
 
+        <CommandCenter
+          clientName={clientProfile.companyName}
+          systemScore={systemScore}
+          dateLabel={dateRangeLabel(dateRange)}
+          cashCoverage={cashCoverage}
+          proofCoverage={proofCoverage}
+          nextReminder={nextReminder}
+          onOpenAutomation={() => setTab("automation")}
+        />
+
         {tab === "onboarding" && (
           <section className="grid gap-5">
             <Card className="overflow-hidden border-[#0B0B0C] bg-[#0B0B0C] text-[#F5F2ED]">
@@ -1105,6 +1123,13 @@ function App() {
                 </div>
               </div>
             </Card>
+
+            <section className="grid gap-4 lg:grid-cols-4">
+              <InstallTile icon={Mail} title="Inbox" detail="IMAP/Gmail app password voor facturen, loonstroken en vaste lasten." status="Required" />
+              <InstallTile icon={Send} title="SMTP" detail="Uitgaande klantmails en betalingsherinneringen vanuit eigen domein." status="Required" />
+              <InstallTile icon={MessageSquareWarning} title="Slack" detail="Incoming webhook voor deadline alerts en bank-upload reminders." status="Required" />
+              <InstallTile icon={LockKeyhole} title="Bankdata" detail="V1 via CSV/XLS upload. V2 via PSD2-provider zodra product klaar is." status="Safe V1" />
+            </section>
 
             <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
               <Card className="overflow-hidden">
@@ -2547,6 +2572,109 @@ function App() {
         )}
       </div>
     </main>
+  );
+}
+
+function CommandCenter({
+  clientName,
+  systemScore,
+  dateLabel,
+  cashCoverage,
+  proofCoverage,
+  nextReminder,
+  onOpenAutomation,
+}: {
+  clientName: string;
+  systemScore: number;
+  dateLabel: string;
+  cashCoverage: number;
+  proofCoverage: number;
+  nextReminder?: ReminderItem;
+  onOpenAutomation: () => void;
+}) {
+  return (
+    <section className="ev-command-grid rounded-2xl border border-[#E8D9B8]/70 bg-white/88 p-3 shadow-sm backdrop-blur-xl">
+      <div className="rounded-xl bg-[#0B0B0C] p-4 text-[#F5F2ED]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">Command status</p>
+            <p className="mt-2 text-2xl font-semibold tracking-[-0.02em]">{systemScore}% operational</p>
+          </div>
+          <Activity className="text-[#2D5BFF]" size={26} />
+        </div>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full bg-[#2D5BFF]" style={{ width: `${Math.max(8, Math.min(systemScore, 100))}%` }} />
+        </div>
+      </div>
+
+      <CommandPill icon={Building2} label="Tenant" value={clientName} />
+      <CommandPill icon={CalendarClock} label="Periode" value={dateLabel} />
+      <CommandPill icon={Banknote} label="Cashruimte" value={euro.format(cashCoverage)} danger={cashCoverage < 0} />
+      <CommandPill icon={FileCheck2} label="Bewijsdekking" value={`${proofCoverage}%`} />
+
+      <button
+        type="button"
+        onClick={onOpenAutomation}
+        className="rounded-xl border border-[#E8D9B8]/70 bg-[#F5F2ED] p-4 text-left transition hover:border-[#2D5BFF]/40 hover:bg-white"
+      >
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
+          <TimerReset size={15} />
+          Volgende actie
+        </div>
+        <p className="mt-2 line-clamp-2 text-sm font-semibold text-[#0B0B0C]">
+          {nextReminder
+            ? `${nextReminder.relation} · ${nextReminder.invoice} · ${nextReminder.action}`
+            : "Geen acute reminders in deze selectie"}
+        </p>
+      </button>
+    </section>
+  );
+}
+
+function CommandPill({
+  icon: Icon,
+  label,
+  value,
+  danger = false,
+}: {
+  icon: typeof Banknote;
+  label: string;
+  value: string;
+  danger?: boolean;
+}) {
+  return (
+    <div className={cn("rounded-xl border p-4", danger ? "border-red-200 bg-red-50" : "border-[#E8D9B8]/70 bg-[#F5F2ED]")}>
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
+        <Icon size={15} />
+        {label}
+      </div>
+      <p className={cn("mt-2 truncate text-sm font-semibold", danger ? "text-red-700" : "text-[#0B0B0C]")}>{value}</p>
+    </div>
+  );
+}
+
+function InstallTile({
+  icon: Icon,
+  title,
+  detail,
+  status,
+}: {
+  icon: typeof Mail;
+  title: string;
+  detail: string;
+  status: string;
+}) {
+  return (
+    <Card className="group overflow-hidden bg-white/90 p-5 transition hover:-translate-y-0.5 hover:border-[#2D5BFF]/35">
+      <div className="flex items-start justify-between gap-3">
+        <div className="rounded-xl bg-[#2D5BFF]/10 p-2 text-[#2D5BFF]">
+          <Icon size={21} />
+        </div>
+        <Badge tone="accent">{status}</Badge>
+      </div>
+      <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em] text-[#0B0B0C]">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-neutral-600">{detail}</p>
+    </Card>
   );
 }
 

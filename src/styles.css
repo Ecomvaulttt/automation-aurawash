@@ -37,6 +37,38 @@ select {
   letter-spacing: -0.02em;
 }
 
+.ev-canvas {
+  background:
+    linear-gradient(rgba(11, 11, 12, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(11, 11, 12, 0.035) 1px, transparent 1px),
+    #f5f2ed;
+  background-size: 32px 32px;
+}
+
+.ev-elevated {
+  box-shadow:
+    0 24px 80px rgba(11, 11, 12, 0.18),
+    inset 0 1px 0 rgba(245, 242, 237, 0.08);
+}
+
+.ev-command-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.05fr) repeat(4, minmax(150px, 0.75fr)) minmax(220px, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 1180px) {
+  .ev-command-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .ev-command-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .table-scroll {
   scrollbar-color: #c8c8c8 transparent;
   scrollbar-width: thin;
