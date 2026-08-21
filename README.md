@@ -10,7 +10,9 @@ AuraWash/B&T is de eerste demo-tenant.
 - Beschikbaar geld aanpassen en toevoegen.
 - Veilige bankflow via periodieke CSV/XLS upload in plaats van bankcredentials opslaan.
 - Klikbare KPI's met maand/kwartaal/jaar analyse.
+- Mini-agenda met presets: vandaag, gister, laatste 7/30/90/365 dagen, deze maand, kwartaal, halfjaar, jaar en totaal.
 - Salarissen aanpassen, medewerkers toevoegen/verwijderen en loonstroken uploaden.
+- Loonstroken per medewerkerprofiel met maandselectie.
 - Medewerkers uit dienst zetten zonder ze direct uit de historie te verwijderen.
 - Loonstroken handmatig goedkeuren of afkeuren.
 - Belastingen op betaald/niet betaald zetten.
@@ -75,6 +77,30 @@ Start bij de `Setup` tab:
 4. Upload CSV/XLS bankbestand van de laatste 30 dagen.
 5. Koppel inbox/IMAP en SMTP secrets.
 6. Controleer documentendossier en zet klantmail pas daarna live.
+
+## Wat moet geinstalleerd/gekoppeld worden
+
+Minimaal voor een werkende demo:
+
+```bash
+npm install
+npm run dev
+```
+
+Voor echte automation:
+
+- IMAP toegang of Gmail app password voor de administratie inbox.
+- SMTP toegang voor uitgaande e-mail.
+- Slack Incoming Webhook voor het administratiekanaal.
+- GitHub Actions secrets voor IMAP, SMTP en Slack.
+- Periodieke CSV/XLS bankexport van de klant, of later een bank-provider integratie.
+
+Optioneel voor V2:
+
+- OCR/AI extractie voor PDFs.
+- Database en auth voor multi-tenant klantlogins.
+- PDF generator voor echte factuur-PDF's.
+- Bankkoppeling via PSD2-provider.
 
 ## Inbox, Slack en klantmail automation
 

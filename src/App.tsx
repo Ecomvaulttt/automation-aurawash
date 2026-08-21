@@ -78,6 +78,25 @@ type FixedCost = (typeof initialFixedCosts)[number];
 type DocumentType = InvoiceDocument["type"];
 type PeriodView = "maand" | "kwartaal" | "jaar";
 type MetricKey = "cash" | "salary" | "tax" | "payables" | "receivables" | "fixed";
+type DateRangePreset =
+  | "today"
+  | "yesterday"
+  | "last7"
+  | "thisMonth"
+  | "last30"
+  | "last90"
+  | "thisQuarter"
+  | "halfYear"
+  | "year"
+  | "last365"
+  | "total"
+  | "custom";
+
+type DateRangeState = {
+  preset: DateRangePreset;
+  start: string;
+  end: string;
+};
 
 type ClientProfile = {
   companyName: string;
@@ -109,6 +128,20 @@ type FinancialMetric = {
   icon: typeof Banknote;
   danger?: boolean;
 };
+
+const dateRangePresets: Array<{ key: DateRangePreset; label: string }> = [
+  { key: "today", label: "Vandaag" },
+  { key: "yesterday", label: "Gister" },
+  { key: "last7", label: "Laatste 7 dagen" },
+  { key: "thisMonth", label: "Deze maand" },
+  { key: "last30", label: "Laatste 30 dagen" },
+  { key: "last90", label: "Laatste 90 dagen" },
+  { key: "thisQuarter", label: "Dit kwartaal" },
+  { key: "halfYear", label: "Halfjaar" },
+  { key: "year", label: "Jaar" },
+  { key: "last365", label: "Laatste 365 dagen" },
+  { key: "total", label: "Totaal" },
+];
 
 type AutomationSettings = {
   gmailAccount: string;
@@ -186,6 +219,61 @@ function parseIsoDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const date = new Date(`${value}T00:00:00`);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function toIsoDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function startOfYear(date: Date) {
+  return new Date(date.getFullYear(), 0, 1);
+}
+
+function startOfQuarter(date: Date) {
+  return new Date(date.getFullYear(), Math.floor(date.getMonth() / 3) * 3, 1);
+}
+
+function buildDateRange(preset: DateRangePreset): DateRangeState {
+  const now = parseIsoDate(today) ?? new Date();
+  if (preset === "today") return { preset, start: today, end: today };
+  if (preset === "yesterday") {
+    const yesterday = toIsoDate(addDays(now, -1));
+    return { preset, start: yesterday, end: yesterday };
+  }
+  if (preset === "last7") return { preset, start: toIsoDate(addDays(now, -6)), end: today };
+  if (preset === "thisMonth") return { preset, start: toIsoDate(startOfMonth(now)), end: today };
+  if (preset === "last30") return { preset, start: toIsoDate(addDays(now, -29)), end: today };
+  if (preset === "last90") return { preset, start: toIsoDate(addDays(now, -89)), end: today };
+  if (preset === "thisQuarter") return { preset, start: toIsoDate(startOfQuarter(now)), end: today };
+  if (preset === "halfYear") return { preset, start: toIsoDate(addDays(now, -182)), end: today };
+  if (preset === "year") return { preset, start: toIsoDate(startOfYear(now)), end: today };
+  if (preset === "last365") return { preset, start: toIsoDate(addDays(now, -364)), end: today };
+  return { preset: "total", start: "", end: "" };
+}
+
+function dateInRange(value: string, range: DateRangeState) {
+  if (range.preset === "total") return true;
+  const date = parseIsoDate(value);
+  const start = parseIsoDate(range.start);
+  const end = parseIsoDate(range.end);
+  if (!date || !start || !end) return false;
+  return date >= start && date <= end;
+}
+
+function dateRangeLabel(range: DateRangeState) {
+  if (range.preset === "total") return "Alle beschikbare data";
+  const preset = dateRangePresets.find((item) => item.key === range.preset);
+  return `${preset?.label ?? "Aangepast"} · ${range.start || "-"} t/m ${range.end || "-"}`;
 }
 
 function daysUntil(value: string) {
@@ -322,6 +410,7 @@ function App() {
   const [query, setQuery] = useState("");
   const [periodView, setPeriodView] = useStoredState<PeriodView>("ecomvault-period-view", "maand");
   const [selectedMetric, setSelectedMetric] = useStoredState<MetricKey>("ecomvault-selected-metric", "cash");
+  const [dateRange, setDateRange] = useStoredState<DateRangeState>("ecomvault-date-range", buildDateRange("total"));
   const [clientProfile, setClientProfile] = useStoredState<ClientProfile>("ecomvault-client-profile", {
     companyName: "AuraWash",
     sector: "Autodetailing / carwash",
@@ -352,6 +441,8 @@ function App() {
   });
   const [employee, setEmployee] = useState(initialSalaries[0]?.name ?? "");
   const [period, setPeriod] = useState("Mei 2026");
+  const [selectedPayrollEmployee, setSelectedPayrollEmployee] = useStoredState("ecomvault-payroll-employee", initialSalaries[0]?.name ?? "");
+  const [selectedPayrollMonth, setSelectedPayrollMonth] = useStoredState("ecomvault-payroll-month", "Alle maanden");
   const [newBalance, setNewBalance] = useState({ label: "", amount: "" });
   const [newSalary, setNewSalary] = useState({ name: "", total: "" });
   const [newPayable, setNewPayable] = useState({ company: "", invoice: "", amount: "", deadline: "" });
@@ -410,51 +501,76 @@ function App() {
     [automationSettings.payableReminderDays, automationSettings.receivableReminderDays, payables, receivables],
   );
 
+  const rangedPayables = payables.filter((item) => dateInRange(item.deadline, dateRange));
+  const rangedReceivables = receivables.filter((item) => dateInRange(item.dueDate || item.invoiceDate, dateRange));
+  const rangedPayrollDocs = payrollDocs.filter((doc) => dateInRange(doc.uploadedAt, dateRange));
+  const rangedInvoiceDocs = invoiceDocs.filter((doc) => dateInRange(doc.dueDate || doc.receivedAt, dateRange));
+  const rangedTaxes = taxes.filter((item) => dateInRange(item.deadline, dateRange));
+  const displayedPayables = dateRange.preset === "total" ? payables : rangedPayables;
+  const displayedReceivables = dateRange.preset === "total" ? receivables : rangedReceivables;
+  const displayedPayrollDocs = dateRange.preset === "total" ? payrollDocs : rangedPayrollDocs;
+  const displayedInvoiceDocs = dateRange.preset === "total" ? invoiceDocs : rangedInvoiceDocs;
+  const displayedTaxes = dateRange.preset === "total" ? taxes : rangedTaxes;
+
+  const displayTotals = {
+    cash: totals.cash,
+    salary:
+      dateRange.preset === "total"
+        ? totals.salary
+        : sum(displayedPayrollDocs.map((doc) => doc.net || doc.gross || 0)),
+    openTaxes: sum(
+      displayedTaxes.filter((item) => isOpen(`${item.status} ${item.paid}`)).map((item) => item.amount),
+    ),
+    openPayables: sum(displayedPayables.filter((item) => isPaidNo(item.paid)).map((item) => item.amount)),
+    expectedReceivables: sum(displayedReceivables.filter((item) => isPaidNo(item.paid)).map((item) => item.amount)),
+    fixedOpen: dateRange.preset === "total" ? totals.fixedOpen : sum(displayedInvoiceDocs.filter((doc) => doc.type === "vaste-last" && doc.paid === "NEE").map((doc) => doc.amount)),
+  };
+
   const financialMetrics: FinancialMetric[] = [
     {
       key: "cash",
       title: "Beschikbaar",
-      value: totals.cash,
+      value: displayTotals.cash,
       detail: "Rekeningen + contant",
       icon: Banknote,
     },
     {
       key: "salary",
       title: "Salarissen",
-      value: totals.salary,
-      detail: `${activeSalaries.length} actieve medewerkers`,
+      value: displayTotals.salary,
+      detail: dateRange.preset === "total" ? `${activeSalaries.length} actieve medewerkers` : `${displayedPayrollDocs.length} loonstroken`,
       icon: ReceiptText,
     },
     {
       key: "tax",
       title: "Belasting open",
-      value: totals.openTaxes,
+      value: displayTotals.openTaxes,
       detail: "LB/BTW aandacht",
       icon: CalendarClock,
-      danger: totals.openTaxes > 0,
+      danger: displayTotals.openTaxes > 0,
     },
     {
       key: "payables",
       title: "Facturen open",
-      value: totals.openPayables,
-      detail: `${payables.filter((p) => isPaidNo(p.paid)).length} kolom H = NEE`,
+      value: displayTotals.openPayables,
+      detail: `${displayedPayables.filter((p) => isPaidNo(p.paid)).length} kolom H = NEE`,
       icon: FolderUp,
-      danger: totals.openPayables > 0,
+      danger: displayTotals.openPayables > 0,
     },
     {
       key: "receivables",
       title: "Te ontvangen",
-      value: totals.expectedReceivables,
-      detail: `${receivables.filter((r) => isPaidNo(r.paid)).length} kolom J = NEE`,
+      value: displayTotals.expectedReceivables,
+      detail: `${displayedReceivables.filter((r) => isPaidNo(r.paid)).length} kolom J = NEE`,
       icon: ArrowDownToLine,
     },
     {
       key: "fixed",
       title: "Vaste lasten",
-      value: totals.fixedOpen,
+      value: displayTotals.fixedOpen,
       detail: "Openstaand bedrag",
       icon: WalletCards,
-      danger: totals.fixedOpen > 0,
+      danger: displayTotals.fixedOpen > 0,
     },
   ];
 
@@ -471,7 +587,12 @@ function App() {
   const onboardingProgress = Math.round(
     (connectorChecklist.filter((item) => item.done).length / connectorChecklist.length) * 100,
   );
-  const cashCoverage = totals.cash - totals.salary - totals.openTaxes - totals.openPayables - totals.fixedOpen;
+  const cashCoverage =
+    displayTotals.cash -
+    displayTotals.salary -
+    displayTotals.openTaxes -
+    displayTotals.openPayables -
+    displayTotals.fixedOpen;
 
   const selectedDoc = invoiceDocs.find((doc) => doc.id === selectedDocId) ?? invoiceDocs[0];
   const linkedDocumentCount = invoiceDocs.filter((doc) => doc.linkedInvoice).length;
@@ -482,6 +603,14 @@ function App() {
   const payrollCompletion = activeSalaries.length
     ? Math.round((linkedActiveEmployees.length / activeSalaries.length) * 100)
     : 0;
+
+  const payrollMonths = Array.from(new Set(payrollDocs.map((doc) => doc.period))).filter(Boolean);
+  const selectedPayrollProfile =
+    salaries.find((salary) => salary.name === selectedPayrollEmployee) ?? salaries[0];
+  const payrollProfileDocs = payrollDocs.filter((doc) => doc.employee === selectedPayrollProfile?.name);
+  const filteredPayrollProfileDocs = payrollProfileDocs.filter((doc) =>
+    selectedPayrollMonth === "Alle maanden" ? true : doc.period === selectedPayrollMonth,
+  );
 
   const filteredPayables = payables
     .map((item, index) => ({ item, index }))
@@ -519,6 +648,8 @@ function App() {
     }));
 
     setPayrollDocs((current) => [...additions, ...current]);
+    setSelectedPayrollEmployee(selectedEmployee);
+    setSelectedPayrollMonth(period);
     event.target.value = "";
   }
 
@@ -665,7 +796,7 @@ function App() {
 <body>
   <main>
     <h1>${escapeHtml(clientProfile.companyName)} boekhouderpakket</h1>
-    <p>Gegenereerd op ${today}. Periode: ${periodLabel(periodView)}. Bewijsstukken staan als opslagpad/bestandsnaam in dit pakket.</p>
+    <p>Gegenereerd op ${today}. Periode: ${escapeHtml(dateRangeLabel(dateRange))}. Weergave: ${periodLabel(periodView)}. Bewijsstukken staan als opslagpad/bestandsnaam in dit pakket.</p>
     <section class="grid">
       <div class="box"><strong>Beschikbaar</strong><br/><span class="mono">${euro.format(totals.cash)}</span></div>
       <div class="box"><strong>Cashflow ruimte</strong><br/><span class="mono">${euro.format(cashCoverage)}</span></div>
@@ -849,6 +980,7 @@ function App() {
     automationSettings,
     clientProfile,
     periodView,
+    dateRange,
     cashCoverage,
     totals,
   };
@@ -1133,6 +1265,63 @@ function App() {
 
         {tab === "overzicht" && (
           <>
+            <Card className="overflow-hidden">
+              <SectionHeader title="Periode kiezen" note={dateRangeLabel(dateRange)} />
+              <div className="grid gap-4 p-4">
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {dateRangePresets.map((preset) => (
+                    <button
+                      key={preset.key}
+                      onClick={() => {
+                        const nextRange = buildDateRange(preset.key);
+                        setDateRange(nextRange);
+                        if (preset.key === "thisQuarter") setPeriodView("kwartaal");
+                        if (preset.key === "year" || preset.key === "last365") setPeriodView("jaar");
+                        if (["today", "yesterday", "last7", "thisMonth", "last30", "last90"].includes(preset.key)) {
+                          setPeriodView("maand");
+                        }
+                      }}
+                      className={cn(
+                        "h-9 shrink-0 rounded-md px-3 text-sm font-semibold transition",
+                        dateRange.preset === preset.key
+                          ? "bg-[#0B0B0C] text-[#F5F2ED]"
+                          : "bg-[#F5F2ED] text-[#0B0B0C] ring-1 ring-[#E8D9B8]/80 hover:bg-white",
+                      )}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-[1fr_1fr_180px]">
+                  <Field label="Startdatum">
+                    <Input
+                      type="date"
+                      value={dateRange.start}
+                      onChange={(event) =>
+                        setDateRange((current) => ({ ...current, preset: "custom", start: event.target.value }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Einddatum">
+                    <Input
+                      type="date"
+                      value={dateRange.end}
+                      onChange={(event) =>
+                        setDateRange((current) => ({ ...current, preset: "custom", end: event.target.value }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Weergave">
+                    <Select value={periodView} onChange={(event) => setPeriodView(event.target.value as PeriodView)}>
+                      <option value="maand">Maand</option>
+                      <option value="kwartaal">Kwartaal</option>
+                      <option value="jaar">Jaar</option>
+                    </Select>
+                  </Field>
+                </div>
+              </div>
+            </Card>
+
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
               {financialMetrics.map((metric) => (
                 <Metric
@@ -1454,49 +1643,116 @@ function App() {
 
         {tab === "loonstroken" && (
           <section className="grid gap-5 xl:grid-cols-[420px_1fr]">
-            <Card className="p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-bold">Loonstrook upload</h2>
-                  <p className="mt-1 text-sm text-neutral-600">Koppel PDF-bestanden per medewerker en periode.</p>
+            <div className="grid gap-5">
+              <Card className="overflow-hidden">
+                <SectionHeader title="Medewerkerprofielen" note={`${activeSalaries.length} actief`} />
+                <div className="grid divide-y divide-[#E8D9B8]/60">
+                  {salaries.map((salary) => {
+                    const docs = payrollDocs.filter((doc) => doc.employee === salary.name);
+                    const approved = docs.filter((doc) => doc.status === "Goedgekeurd").length;
+                    return (
+                      <button
+                        key={salary.name}
+                        onClick={() => {
+                          setSelectedPayrollEmployee(salary.name);
+                          setEmployee(salary.name);
+                        }}
+                        className={cn(
+                          "grid gap-2 p-4 text-left transition hover:bg-[#2D5BFF]/5",
+                          selectedPayrollProfile?.name === salary.name && "bg-[#2D5BFF]/10",
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-[#0B0B0C]">{salary.name}</p>
+                            <p className="text-sm text-neutral-600">{euro.format(salary.total)} · {salary.status ?? "Actief"}</p>
+                          </div>
+                          <Badge tone={approved === docs.length && docs.length ? "good" : docs.length ? "warn" : "neutral"}>
+                            {approved}/{docs.length}
+                          </Badge>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                <Upload className="text-neutral-400" />
-              </div>
+              </Card>
 
-              <div className="mt-5 grid gap-4">
-                <Field label="Medewerker">
-                  <Select value={employee || activeSalaries[0]?.name || ""} onChange={(event) => setEmployee(event.target.value)}>
-                    {activeSalaries.map((salary) => (
-                      <option key={salary.name}>{salary.name}</option>
-                    ))}
-                  </Select>
-                </Field>
-                <Field label="Periode">
-                  <Input value={period} onChange={(event) => setPeriod(event.target.value)} />
-                </Field>
-                <input
-                  ref={fileInputRef}
-                  className="hidden"
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg"
-                  multiple
-                  onChange={handleFiles}
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50 p-8 text-center transition hover:border-neutral-950 hover:bg-white"
-                >
-                  <FolderUp className="mx-auto mb-3 text-neutral-500" />
-                  <span className="block font-semibold">Upload loonstrook</span>
-                  <span className="mt-1 block text-sm text-neutral-500">PDF of afbeelding, meerdere tegelijk mogelijk</span>
-                </button>
-              </div>
-            </Card>
+              <Card className="overflow-hidden">
+                <SectionHeader title="Maanden" note={selectedPayrollMonth} />
+                <div className="flex flex-wrap gap-2 p-4">
+                  {["Alle maanden", ...payrollMonths].map((month) => (
+                    <button
+                      key={month}
+                      onClick={() => setSelectedPayrollMonth(month)}
+                      className={cn(
+                        "h-9 rounded-md px-3 text-sm font-semibold transition",
+                        selectedPayrollMonth === month
+                          ? "bg-[#0B0B0C] text-[#F5F2ED]"
+                          : "bg-[#F5F2ED] text-[#0B0B0C] ring-1 ring-[#E8D9B8]/80 hover:bg-white",
+                      )}
+                    >
+                      {month}
+                    </button>
+                  ))}
+                </div>
+              </Card>
+
+              <Card className="p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-semibold tracking-[-0.02em] text-[#0B0B0C]">Loonstrook upload</h2>
+                    <p className="mt-1 text-sm text-neutral-600">Koppel PDF-bestanden per profiel en maand.</p>
+                  </div>
+                  <Upload className="text-neutral-400" />
+                </div>
+
+                <div className="mt-5 grid gap-4">
+                  <Field label="Medewerker">
+                    <Select value={employee || selectedPayrollProfile?.name || activeSalaries[0]?.name || ""} onChange={(event) => {
+                      setEmployee(event.target.value);
+                      setSelectedPayrollEmployee(event.target.value);
+                    }}>
+                      {activeSalaries.map((salary) => (
+                        <option key={salary.name}>{salary.name}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Maand / periode">
+                    <Input value={period} onChange={(event) => setPeriod(event.target.value)} />
+                  </Field>
+                  <input
+                    ref={fileInputRef}
+                    className="hidden"
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    multiple
+                    onChange={handleFiles}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="rounded-xl border-2 border-dashed border-[#E8D9B8] bg-[#F5F2ED] p-8 text-center transition hover:border-[#2D5BFF] hover:bg-white"
+                  >
+                    <FolderUp className="mx-auto mb-3 text-neutral-500" />
+                    <span className="block font-semibold">Upload loonstrook</span>
+                    <span className="mt-1 block text-sm text-neutral-500">PDF of afbeelding, meerdere tegelijk mogelijk</span>
+                  </button>
+                </div>
+              </Card>
+            </div>
 
             <Card className="overflow-hidden">
-              <SectionHeader title="Gekoppelde loonstroken" note={`${payrollDocs.length} documenten`} />
-              <div className="grid divide-y divide-neutral-100">
-                {payrollDocs.map((doc) => (
+              <SectionHeader
+                title={selectedPayrollProfile ? `Loonstroken · ${selectedPayrollProfile.name}` : "Loonstroken"}
+                note={`${filteredPayrollProfileDocs.length} documenten in selectie`}
+              />
+              <div className="grid gap-4 p-5 lg:grid-cols-4">
+                <Preview label="Medewerker" value={selectedPayrollProfile?.name ?? "-"} />
+                <Preview label="Maand" value={selectedPayrollMonth} />
+                <Preview label="Netto totaal" value={euro.format(sum(filteredPayrollProfileDocs.map((doc) => doc.net)))} />
+                <Preview label="Goedkeuring" value={`${filteredPayrollProfileDocs.filter((doc) => doc.status === "Goedgekeurd").length}/${filteredPayrollProfileDocs.length}`} />
+              </div>
+              <div className="grid divide-y divide-[#E8D9B8]/60">
+                {filteredPayrollProfileDocs.map((doc) => (
                   <article key={doc.id} className="grid gap-4 p-4 lg:grid-cols-[1.2fr_150px_150px_150px_190px_44px] lg:items-center">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -1552,6 +1808,9 @@ function App() {
                     </Button>
                   </article>
                 ))}
+                {!filteredPayrollProfileDocs.length && (
+                  <div className="p-6 text-sm text-neutral-600">Geen loonstroken voor dit profiel en deze maand.</div>
+                )}
               </div>
             </Card>
           </section>

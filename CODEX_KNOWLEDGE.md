@@ -19,8 +19,9 @@ Maak en onderhoud een plug-and-play finance operations cockpit voor autodetailer
 - Veilige bankflow via CSV/XLS upload van de laatste 30 dagen.
 - Beschikbaar geld beheren.
 - Klikbare KPI's met maand/kwartaal/jaar grafiek.
+- Mini-agenda/preset periodekeuze voor overzichtcijfers: vandaag, gister, laatste 7/30/90/365 dagen, deze maand, kwartaal, halfjaar, jaar, totaal en custom start/einddatum.
 - Salarissen en medewerkers beheren.
-- Loonstroken uploaden, controleren, goedkeuren of afkeuren.
+- Loonstroken per medewerkerprofiel en maand uploaden, controleren, goedkeuren of afkeuren.
 - Belastingen beheren.
 - Te betalen facturen beheren.
 - Te ontvangen facturen beheren.
@@ -140,6 +141,7 @@ De app moet minimaal dit ondersteunen:
 - Medewerker verwijderen moet ook gekoppelde loonstroken van die medewerker opruimen.
 - `Uit dienst` medewerkers blijven zichtbaar in medewerkerbeheer, maar tellen niet mee in actieve salarisrun, loonstrook-upload dropdown of actieve medewerker-totalen.
 - Loonstroken uploaden.
+- Loonstroken moeten per profiel zichtbaar zijn met maandchips eronder.
 - Loonstroken status: `Controle`, `Goedgekeurd`, `Afgekeurd`, `Ontbreekt`.
 - Belastingen op `JA` of `NEE` zetten.
 - Belastingpost toevoegen.

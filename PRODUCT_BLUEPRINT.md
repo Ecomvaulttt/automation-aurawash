@@ -21,11 +21,13 @@ Belofte: binnen 2-3 uur staat er een werkend systeem dat inbox, facturen, loonst
 4. Klant uploadt CSV/XLS bankbestand van de laatste 30 dagen.
 5. Systeem haalt facturen, loonstroken en vaste lasten uit e-mail.
 6. Systeem toont per document: PDF, relatie, factuurnummer, bedrag, vervaldatum, betaald JA/NEE, prioriteit, status en opmerkingen.
-7. Systeem stuurt Slack reminders:
+7. Loonstroken staan per medewerkerprofiel met maandselectie onder het profiel.
+8. Overzichtcijfers hebben een mini-agenda: vandaag, gister, laatste 7/30/90/365 dagen, deze maand, kwartaal, halfjaar, jaar, totaal en handmatige start/einddatum.
+9. Systeem stuurt Slack reminders:
    - 5 dagen voor deadlines van te betalen facturen en vaste lasten.
    - 3 dagen voor deadlines van te ontvangen facturen.
-8. Systeem stuurt klantmail wanneer een te ontvangen factuur nog niet is overgeboekt en klantmail automation aan staat.
-9. Klant exporteert met 1 klik een boekhouderpakket.
+10. Systeem stuurt klantmail wanneer een te ontvangen factuur nog niet is overgeboekt en klantmail automation aan staat.
+11. Klant exporteert met 1 klik een boekhouderpakket.
 
 ## Productregels
 
@@ -52,6 +54,8 @@ Belofte: binnen 2-3 uur staat er een werkend systeem dat inbox, facturen, loonst
 - Eerste scherm moet werkbaar zijn, geen marketing homepage.
 - KPI's: beschikbaar geld, salarissen, belasting open, facturen open, te ontvangen, vaste lasten.
 - KPI's zijn klikbaar en tonen maand/kwartaal/jaar context.
+- Datumselectie moet boven KPI's staan en direct duidelijk maken welke periode de cijfers tonen.
+- Loonstroken worden altijd bekeken vanuit medewerkerprofiel -> maand -> document.
 - Boekhouderexport bevat kosten, cashflow, activa/passiva indicatie en bewijsstukken.
 - Documentendossier is de bron voor PDF-bewijs.
 
