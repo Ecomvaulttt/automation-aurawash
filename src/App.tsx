@@ -42,6 +42,7 @@ import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import { Select } from "./components/ui/select";
+import { SkyToggle } from "./components/ui/sky-toggle";
 import {
   balances as initialBalances,
   fixedCosts as initialFixedCosts,
@@ -75,6 +76,7 @@ const githubActionsUrl =
   "https://github.com/Ecomvaulttt/automation-aurawash/actions/workflows/send-email.yml";
 
 type Tab = "onboarding" | "overzicht" | "loonstroken" | "instanties" | "facturen" | "automation" | "email";
+type ThemeMode = "light" | "dark";
 type PaidValue = "JA" | "NEE" | "JA (termijn)";
 type Balance = (typeof initialBalances)[number];
 type FixedCost = (typeof initialFixedCosts)[number];
@@ -411,6 +413,7 @@ function escapeHtml(value: string) {
 function App() {
   const [tab, setTab] = useState<Tab>("onboarding");
   const [query, setQuery] = useState("");
+  const [theme, setTheme] = useStoredState<ThemeMode>("ecomvault-theme", "light");
   const [periodView, setPeriodView] = useStoredState<PeriodView>("ecomvault-period-view", "maand");
   const [selectedMetric, setSelectedMetric] = useStoredState<MetricKey>("ecomvault-selected-metric", "cash");
   const [dateRange, setDateRange] = useStoredState<DateRangeState>("ecomvault-date-range", buildDateRange("total"));
@@ -1010,7 +1013,7 @@ function App() {
   )}&body=${encodeURIComponent(emailDraft.body)}`;
 
   return (
-    <main className="ev-canvas min-h-[100dvh] text-[#0B0B0C]">
+    <main className="ev-canvas min-h-[100dvh] text-[#0B0B0C]" data-theme={theme}>
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
         <header className="ev-elevated overflow-hidden rounded-2xl border border-[#E8D9B8]/20 bg-[#0B0B0C] text-[#F5F2ED]">
           <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1031,6 +1034,13 @@ function App() {
             </div>
 
             <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+              <div className="col-span-2 flex items-center justify-end sm:col-span-1">
+                <SkyToggle
+                  checked={theme === "dark"}
+                  onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+                  label={theme === "dark" ? "Schakel naar light theme" : "Schakel naar dark theme"}
+                />
+              </div>
               <Button variant="secondary" className="whitespace-nowrap" onClick={() => exportCsv("loonstroken", payrollRows)}>
                 <FileSpreadsheet size={18} />
                 <span className="hidden sm:inline">Loonstroken CSV</span>
