@@ -1102,11 +1102,11 @@ function App() {
         <section className="ev-workspace">
           <div className="ev-topbar">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#E8D9B8]/70 bg-white text-[#2D5BFF] shadow-sm">
+              <div className="ev-titlebar-icon">
                 <ActiveTabIcon size={20} />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-neutral-500">{clientProfile.sector} workspace</p>
+                <p className="text-sm font-medium text-neutral-500">{clientProfile.sector}</p>
                 <h1 className="brand-display truncate text-2xl text-[#0B0B0C] sm:text-3xl">
                   {activeTabItem.label}
                 </h1>
@@ -1114,7 +1114,7 @@ function App() {
             </div>
 
             <div className="ev-topbar-actions">
-              <div className="hidden min-w-[240px] items-center gap-2 rounded-xl border border-[#E8D9B8]/70 bg-white px-3 py-2 text-sm text-neutral-500 shadow-sm md:flex">
+              <div className="ev-search-pill hidden md:flex">
                 <Search size={16} className="text-[#2D5BFF]" />
                 <span className="truncate">{dateRangeLabel(dateRange)}</span>
               </div>
@@ -2651,14 +2651,14 @@ function CommandCenter({
   onOpenAutomation: () => void;
 }) {
   return (
-    <section className="ev-command-grid rounded-2xl border border-[#E8D9B8]/70 bg-white/88 p-3 shadow-sm backdrop-blur-xl">
+    <section className="ev-command-grid">
       <div className="ev-command-primary rounded-xl bg-[#0B0B0C] p-4 text-[#F5F2ED]">
-        <div className="flex items-center justify-between gap-3">
-          <div>
+        <div className="relative">
+          <div className="pr-8">
             <p className="text-sm font-medium text-[#E8D9B8]/82">Operationele controle</p>
-            <p className="mt-2 text-2xl font-semibold tracking-[-0.02em]">{systemScore}% op orde</p>
+            <p className="mt-2 whitespace-nowrap text-[23px] font-semibold leading-tight tracking-[-0.02em]">{systemScore}% op orde</p>
           </div>
-          <Activity className="text-[#2D5BFF]" size={26} />
+          <Activity className="absolute right-0 top-8 text-[#2D5BFF]" size={24} />
         </div>
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
           <div className="h-full rounded-full bg-[#2D5BFF]" style={{ width: `${Math.max(8, Math.min(systemScore, 100))}%` }} />
@@ -2673,7 +2673,7 @@ function CommandCenter({
       <button
         type="button"
         onClick={onOpenAutomation}
-        className="rounded-xl border border-[#E8D9B8]/70 bg-[#F5F2ED] p-4 text-left transition hover:border-[#2D5BFF]/40 hover:bg-white"
+        className="ev-command-action"
       >
         <div className="flex items-center gap-2 text-sm font-medium text-neutral-500">
           <TimerReset size={15} />
@@ -2701,7 +2701,7 @@ function CommandPill({
   danger?: boolean;
 }) {
   return (
-    <div className={cn("rounded-xl border p-4", danger ? "border-red-200 bg-red-50" : "border-[#E8D9B8]/70 bg-[#F5F2ED]")}>
+    <div className={cn("ev-command-card", danger && "ev-command-card-danger")}>
       <div className="flex items-center gap-2 text-sm font-medium text-neutral-500">
         <Icon size={15} />
         {label}
@@ -2968,7 +2968,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 }
 
 function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-4 py-3 text-xs font-semibold uppercase text-white/80">{children}</th>;
+  return <th className="px-4 py-3 text-[13px] font-semibold text-white/76">{children}</th>;
 }
 
 function Td({ children, className }: { children: React.ReactNode; className?: string }) {
