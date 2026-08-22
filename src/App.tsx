@@ -5,7 +5,6 @@ import {
   Banknote,
   BarChart3,
   Bot,
-  BriefcaseBusiness,
   Building2,
   CalendarClock,
   CheckCircle2,
@@ -21,9 +20,7 @@ import {
   FileText,
   FolderUp,
   Gauge,
-  Gem,
   Landmark,
-  Layers3,
   LockKeyhole,
   Mail,
   MessageSquareWarning,
@@ -1015,98 +1012,139 @@ function App() {
     emailDraft.subject,
   )}&body=${encodeURIComponent(emailDraft.body)}`;
 
+  const tabItems = [
+    { id: "onboarding" as const, icon: PlugZap, label: "Setup", description: "Connecties en klantprofiel" },
+    { id: "overzicht" as const, icon: Gauge, label: "Overzicht", description: "Cash, kosten en deadlines" },
+    { id: "loonstroken" as const, icon: ReceiptText, label: "Loonstroken", description: "Profielen en maandruns" },
+    { id: "instanties" as const, icon: ClipboardList, label: "Instanties", description: "Export en bewijspakket" },
+    { id: "facturen" as const, icon: WalletCards, label: "Facturen", description: "Te betalen en te ontvangen" },
+    { id: "automation" as const, icon: Bot, label: "Automation", description: "Inbox, Slack en reminders" },
+    { id: "email" as const, icon: Mail, label: "E-mail", description: "Templates en GitHub flow" },
+  ];
+  const activeTabItem = tabItems.find((item) => item.id === tab) ?? tabItems[0];
+  const ActiveTabIcon = activeTabItem.icon;
+
   return (
     <main className="ev-canvas min-h-[100dvh] text-[#0B0B0C]" data-theme={theme}>
-      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="ev-elevated overflow-hidden rounded-2xl border border-[#E8D9B8]/20 bg-[#0B0B0C] text-[#F5F2ED]">
-          <div className="flex flex-col gap-5 p-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#E8D9B8]/20 bg-[#17171A] shadow-[inset_0_1px_0_rgba(245,242,237,0.08)]">
-                {clientProfile.logoUrl ? (
-                  <img src={clientProfile.logoUrl} alt={clientProfile.companyName} className="max-h-10 max-w-10 object-contain" />
-                ) : (
-                  <Building2 className="text-[#E8D9B8]" size={24} />
-                )}
+      <div className="ev-shell">
+        <aside className="ev-sidebar">
+          <div className="ev-sidebar-brand">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#E8D9B8]/18 bg-white/[0.05] shadow-[inset_0_1px_0_rgba(245,242,237,0.08)]">
+              {clientProfile.logoUrl ? (
+                <img src={clientProfile.logoUrl} alt={clientProfile.companyName} className="max-h-9 max-w-9 object-contain" />
+              ) : (
+                <Building2 className="text-[#E8D9B8]" size={22} />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#F5F2ED]">EcomVault Ops</p>
+              <p className="truncate text-xs text-[#F5F2ED]/48">{clientProfile.companyName}</p>
+            </div>
+          </div>
+
+          <nav className="ev-sidebar-nav" aria-label="Dashboard navigatie">
+            {tabItems.map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setTab(item.id)}
+                  className={cn("ev-nav-item", tab === item.id && "ev-nav-item-active")}
+                  aria-pressed={tab === item.id}
+                >
+                  <span className="ev-nav-icon">
+                    <Icon size={18} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold">{item.label}</span>
+                    <span className="block truncate text-xs opacity-55">{item.description}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="ev-sidebar-panel">
+            <div>
+              <p className="text-sm font-semibold text-[#F5F2ED]">{systemScore}% governance</p>
+              <p className="mt-1 text-xs leading-5 text-[#F5F2ED]/50">
+                {proofCoverage}% bewijsdekking · {reminders.length} acties
+              </p>
+            </div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-[#2D5BFF]" style={{ width: `${Math.max(8, Math.min(systemScore, 100))}%` }} />
+            </div>
+          </div>
+
+          <div className="ev-sidebar-footer">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
+              <span className="text-xs font-medium text-[#F5F2ED]/58">{theme === "dark" ? "Dark mode" : "Light mode"}</span>
+              <SkyToggle
+                checked={theme === "dark"}
+                onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+                label={theme === "dark" ? "Schakel naar light theme" : "Schakel naar dark theme"}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+              <Button variant="secondary" className="justify-center whitespace-nowrap" onClick={() => exportCsv("loonstroken", payrollRows)}>
+                <FileSpreadsheet size={18} />
+                CSV
+              </Button>
+              <Button variant="accent" className="justify-center whitespace-nowrap" onClick={exportJson}>
+                <FileArchive size={18} />
+                Pakket
+              </Button>
+            </div>
+          </div>
+        </aside>
+
+        <section className="ev-workspace">
+          <div className="ev-topbar">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#E8D9B8]/70 bg-white text-[#2D5BFF] shadow-sm">
+                <ActiveTabIcon size={20} />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">EcomVault private operations</p>
-                <h1 className="brand-display truncate text-2xl text-[#F5F2ED] sm:text-3xl">
-                  {clientProfile.companyName} financial command
+                <p className="text-sm font-medium text-neutral-500">{clientProfile.sector} workspace</p>
+                <h1 className="brand-display truncate text-2xl text-[#0B0B0C] sm:text-3xl">
+                  {activeTabItem.label}
                 </h1>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <HeaderMark icon={BriefcaseBusiness} label={clientProfile.sector} />
-                  <HeaderMark icon={Layers3} label="Evidence-led" />
-                  <HeaderMark icon={Gem} label="Luxury ops" />
-                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-              <div className="col-span-2 flex items-center justify-end rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 sm:col-span-1">
-                <SkyToggle
-                  checked={theme === "dark"}
-                  onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
-                  label={theme === "dark" ? "Schakel naar light theme" : "Schakel naar dark theme"}
-                />
+            <div className="ev-topbar-actions">
+              <div className="hidden min-w-[240px] items-center gap-2 rounded-xl border border-[#E8D9B8]/70 bg-white px-3 py-2 text-sm text-neutral-500 shadow-sm md:flex">
+                <Search size={16} className="text-[#2D5BFF]" />
+                <span className="truncate">{dateRangeLabel(dateRange)}</span>
               </div>
-              <Button variant="secondary" className="whitespace-nowrap" onClick={() => exportCsv("loonstroken", payrollRows)}>
-                <FileSpreadsheet size={18} />
-                <span className="hidden sm:inline">Loonstroken CSV</span>
-                <span className="sm:hidden">CSV</span>
+              <Button variant="secondary" className="whitespace-nowrap" onClick={() => setTab("automation")}>
+                <TimerReset size={18} />
+                Acties
               </Button>
               <Button variant="accent" className="whitespace-nowrap" onClick={exportJson}>
-                <FileArchive size={18} />
-                <span className="hidden sm:inline">Instanties pakket</span>
-                <span className="sm:hidden">Pakket</span>
+                <Download size={18} />
+                Export
               </Button>
             </div>
           </div>
 
-          <nav className="flex gap-1 overflow-x-auto border-t border-white/10 bg-white/[0.025] p-2">
-            {[
-              ["onboarding", PlugZap, "Setup"],
-              ["overzicht", Gauge, "Overzicht"],
-              ["loonstroken", ReceiptText, "Loonstroken"],
-              ["instanties", ClipboardList, "Instanties"],
-              ["facturen", WalletCards, "Facturen"],
-              ["automation", Bot, "Automation"],
-              ["email", Mail, "E-mail"],
-            ].map(([id, Icon, label], index) => (
-              <button
-                key={id as string}
-                onClick={() => setTab(id as Tab)}
-                className={cn(
-                  "inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition",
-                  tab === id
-                    ? "bg-[#2D5BFF] text-white shadow-[0_12px_30px_rgba(45,91,255,0.28)]"
-                    : "text-[#F5F2ED]/70 hover:bg-white/10 hover:text-[#F5F2ED]",
-                )}
-                aria-pressed={tab === id}
-              >
-                <span className="font-mono text-[11px] opacity-60">{String(index + 1).padStart(2, "0")}</span>
-                <Icon size={17} />
-                {label as string}
-              </button>
-            ))}
-          </nav>
-        </header>
-
-        <CommandCenter
-          clientName={clientProfile.companyName}
-          systemScore={systemScore}
-          dateLabel={dateRangeLabel(dateRange)}
-          cashCoverage={cashCoverage}
-          proofCoverage={proofCoverage}
-          nextReminder={nextReminder}
-          onOpenAutomation={() => setTab("automation")}
-        />
+          <CommandCenter
+            clientName={clientProfile.companyName}
+            systemScore={systemScore}
+            dateLabel={dateRangeLabel(dateRange)}
+            cashCoverage={cashCoverage}
+            proofCoverage={proofCoverage}
+            nextReminder={nextReminder}
+            onOpenAutomation={() => setTab("automation")}
+          />
 
         {tab === "onboarding" && (
           <section className="grid gap-5">
             <Card className="ev-spotlight overflow-hidden border-[#0B0B0C] bg-[#0B0B0C] text-[#F5F2ED]">
               <div className="grid gap-6 p-6 lg:grid-cols-[1.1fr_0.9fr] lg:p-8">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">Private client operating layer</p>
+                  <p className="text-sm font-medium text-[#E8D9B8]/82">Private client operating layer</p>
                   <h2 className="brand-display mt-3 max-w-4xl text-4xl leading-none tracking-[-0.02em] text-[#F5F2ED] sm:text-5xl lg:text-6xl">
                     Financial control voor detailbedrijven op niveau.
                   </h2>
@@ -2589,17 +2627,9 @@ function App() {
             </Card>
           </section>
         )}
+        </section>
       </div>
     </main>
-  );
-}
-
-function HeaderMark({ icon: Icon, label }: { icon: typeof BriefcaseBusiness; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border border-[#E8D9B8]/15 bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-[#F5F2ED]/68">
-      <Icon size={12} className="text-[#E8D9B8]" />
-      {label}
-    </span>
   );
 }
 
@@ -2625,8 +2655,8 @@ function CommandCenter({
       <div className="ev-command-primary rounded-xl bg-[#0B0B0C] p-4 text-[#F5F2ED]">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">Control index</p>
-            <p className="mt-2 text-2xl font-semibold tracking-[-0.02em]">{systemScore}% governed</p>
+            <p className="text-sm font-medium text-[#E8D9B8]/82">Operationele controle</p>
+            <p className="mt-2 text-2xl font-semibold tracking-[-0.02em]">{systemScore}% op orde</p>
           </div>
           <Activity className="text-[#2D5BFF]" size={26} />
         </div>
@@ -2645,9 +2675,9 @@ function CommandCenter({
         onClick={onOpenAutomation}
         className="rounded-xl border border-[#E8D9B8]/70 bg-[#F5F2ED] p-4 text-left transition hover:border-[#2D5BFF]/40 hover:bg-white"
       >
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
+        <div className="flex items-center gap-2 text-sm font-medium text-neutral-500">
           <TimerReset size={15} />
-          Priority action
+          Eerstvolgende actie
         </div>
         <p className="mt-2 line-clamp-2 text-sm font-semibold text-[#0B0B0C]">
           {nextReminder
@@ -2672,7 +2702,7 @@ function CommandPill({
 }) {
   return (
     <div className={cn("rounded-xl border p-4", danger ? "border-red-200 bg-red-50" : "border-[#E8D9B8]/70 bg-[#F5F2ED]")}>
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
+      <div className="flex items-center gap-2 text-sm font-medium text-neutral-500">
         <Icon size={15} />
         {label}
       </div>
@@ -2873,7 +2903,7 @@ function TaxPanel({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="grid gap-2">
-      <span className="text-xs font-semibold uppercase text-neutral-500">{label}</span>
+      <span className="text-sm font-medium text-neutral-600">{label}</span>
       {children}
     </label>
   );
@@ -2922,7 +2952,7 @@ function SectionHeader({ title, note, dark = false }: { title: string; note: str
 function Preview({ label, value, wide = false, dark = false }: { label: string; value: string; wide?: boolean; dark?: boolean }) {
   return (
     <div className={cn("rounded-xl border p-4", dark ? "border-white/10 bg-white/[0.06]" : "border-[#E8D9B8]/70 bg-[#F5F2ED]", wide && "sm:col-span-2")}>
-      <p className={cn("text-xs font-semibold uppercase tracking-[0.08em]", dark ? "text-[#E8D9B8]" : "text-neutral-500")}>{label}</p>
+      <p className={cn("text-xs font-medium", dark ? "text-[#E8D9B8]" : "text-neutral-500")}>{label}</p>
       <p className={cn("mt-2 break-words text-sm font-semibold", dark ? "text-[#F5F2ED]" : "text-[#0B0B0C]")}>{value}</p>
     </div>
   );
@@ -2931,7 +2961,7 @@ function Preview({ label, value, wide = false, dark = false }: { label: string; 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[#E8D9B8]/20 bg-white/[0.06] p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">{label}</p>
+      <p className="text-xs font-medium text-[#E8D9B8]">{label}</p>
       <p className="mt-2 font-mono text-2xl font-semibold text-white">{value}</p>
     </div>
   );
