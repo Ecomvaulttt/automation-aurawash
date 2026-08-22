@@ -15,7 +15,7 @@ export function downloadFile(filename: string, content: string, type: string) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function toCsv(rows: ExportRow[]) {

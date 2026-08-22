@@ -74,6 +74,7 @@ const number = new Intl.NumberFormat("nl-NL", {
 const today = new Date().toISOString().slice(0, 10);
 const githubActionsUrl =
   "https://github.com/Ecomvaulttt/automation-aurawash/actions/workflows/send-email.yml";
+const defaultPayrollEmployee = samplePayrollDocs[0]?.employee ?? initialSalaries[0]?.name ?? "";
 
 type Tab = "onboarding" | "overzicht" | "loonstroken" | "instanties" | "facturen" | "automation" | "email";
 type ThemeMode = "light" | "dark";
@@ -445,9 +446,9 @@ function App() {
     receivableReminderDays: 3,
     autoCustomerEmail: true,
   });
-  const [employee, setEmployee] = useState(initialSalaries[0]?.name ?? "");
+  const [employee, setEmployee] = useState(defaultPayrollEmployee);
   const [period, setPeriod] = useState("Mei 2026");
-  const [selectedPayrollEmployee, setSelectedPayrollEmployee] = useStoredState("ecomvault-payroll-employee", initialSalaries[0]?.name ?? "");
+  const [selectedPayrollEmployee, setSelectedPayrollEmployee] = useStoredState("ecomvault-payroll-employee", defaultPayrollEmployee);
   const [selectedPayrollMonth, setSelectedPayrollMonth] = useStoredState("ecomvault-payroll-month", "Alle maanden");
   const [newBalance, setNewBalance] = useState({ label: "", amount: "" });
   const [newSalary, setNewSalary] = useState({ name: "", total: "" });
@@ -1016,7 +1017,7 @@ function App() {
     { id: "onboarding" as const, icon: PlugZap, label: "Setup", description: "Connecties en klantprofiel" },
     { id: "overzicht" as const, icon: Gauge, label: "Overzicht", description: "Cash, kosten en deadlines" },
     { id: "loonstroken" as const, icon: ReceiptText, label: "Loonstroken", description: "Profielen en maandruns" },
-    { id: "instanties" as const, icon: ClipboardList, label: "Instanties", description: "Export en bewijspakket" },
+    { id: "instanties" as const, icon: ClipboardList, label: "Instanties", description: "Bewijspakket en aangiftes" },
     { id: "facturen" as const, icon: WalletCards, label: "Facturen", description: "Te betalen en te ontvangen" },
     { id: "automation" as const, icon: Bot, label: "Automation", description: "Inbox, Slack en reminders" },
     { id: "email" as const, icon: Mail, label: "E-mail", description: "Templates en GitHub flow" },
