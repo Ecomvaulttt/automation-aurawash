@@ -114,8 +114,37 @@ select {
     inset 0 1px 0 rgba(245, 242, 237, 0.08);
 }
 
+.ev-spotlight {
+  position: relative;
+  isolation: isolate;
+}
+
+.ev-spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 84% 12%, rgba(45, 91, 255, 0.24), transparent 32%),
+    linear-gradient(135deg, rgba(232, 217, 184, 0.08), transparent 42%);
+}
+
+.ev-command-primary {
+  position: relative;
+  overflow: hidden;
+}
+
+.ev-command-primary::after {
+  content: "";
+  position: absolute;
+  inset: auto -20% -55% 35%;
+  height: 120px;
+  background: radial-gradient(circle, rgba(45, 91, 255, 0.36), transparent 62%);
+  pointer-events: none;
+}
+
 .sky-toggle {
-  --toggle-size: 13px;
+  --toggle-size: 11px;
   --container-width: 5.625em;
   --container-height: 2.5em;
   --container-radius: 6.25em;
@@ -332,4 +361,8 @@ select {
 .table-scroll::-webkit-scrollbar-thumb {
   background: #c8c8c8;
   border-radius: 999px;
+}
+
+::selection {
+  background: rgba(45, 91, 255, 0.25);
 }

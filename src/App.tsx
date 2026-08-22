@@ -5,6 +5,7 @@ import {
   Banknote,
   BarChart3,
   Bot,
+  BriefcaseBusiness,
   Building2,
   CalendarClock,
   CheckCircle2,
@@ -20,7 +21,9 @@ import {
   FileText,
   FolderUp,
   Gauge,
+  Gem,
   Landmark,
+  Layers3,
   LockKeyhole,
   Mail,
   MessageSquareWarning,
@@ -1016,9 +1019,9 @@ function App() {
     <main className="ev-canvas min-h-[100dvh] text-[#0B0B0C]" data-theme={theme}>
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
         <header className="ev-elevated overflow-hidden rounded-2xl border border-[#E8D9B8]/20 bg-[#0B0B0C] text-[#F5F2ED]">
-          <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-5 p-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#E8D9B8]/20 bg-[#17171A]">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#E8D9B8]/20 bg-[#17171A] shadow-[inset_0_1px_0_rgba(245,242,237,0.08)]">
                 {clientProfile.logoUrl ? (
                   <img src={clientProfile.logoUrl} alt={clientProfile.companyName} className="max-h-10 max-w-10 object-contain" />
                 ) : (
@@ -1026,15 +1029,20 @@ function App() {
                 )}
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">EcomVault Ops · {clientProfile.sector}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">EcomVault private operations</p>
                 <h1 className="brand-display truncate text-2xl text-[#F5F2ED] sm:text-3xl">
-                  {clientProfile.companyName} cockpit
+                  {clientProfile.companyName} financial command
                 </h1>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <HeaderMark icon={BriefcaseBusiness} label={clientProfile.sector} />
+                  <HeaderMark icon={Layers3} label="Evidence-led" />
+                  <HeaderMark icon={Gem} label="Luxury ops" />
+                </div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-              <div className="col-span-2 flex items-center justify-end sm:col-span-1">
+              <div className="col-span-2 flex items-center justify-end rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 sm:col-span-1">
                 <SkyToggle
                   checked={theme === "dark"}
                   onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
@@ -1054,7 +1062,7 @@ function App() {
             </div>
           </div>
 
-          <nav className="flex gap-1 overflow-x-auto border-t border-white/10 p-2">
+          <nav className="flex gap-1 overflow-x-auto border-t border-white/10 bg-white/[0.025] p-2">
             {[
               ["onboarding", PlugZap, "Setup"],
               ["overzicht", Gauge, "Overzicht"],
@@ -1063,18 +1071,19 @@ function App() {
               ["facturen", WalletCards, "Facturen"],
               ["automation", Bot, "Automation"],
               ["email", Mail, "E-mail"],
-            ].map(([id, Icon, label]) => (
+            ].map(([id, Icon, label], index) => (
               <button
                 key={id as string}
                 onClick={() => setTab(id as Tab)}
                 className={cn(
-                  "inline-flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold transition",
+                  "inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition",
                   tab === id
-                    ? "bg-[#2D5BFF] text-white shadow-sm"
+                    ? "bg-[#2D5BFF] text-white shadow-[0_12px_30px_rgba(45,91,255,0.28)]"
                     : "text-[#F5F2ED]/70 hover:bg-white/10 hover:text-[#F5F2ED]",
                 )}
                 aria-pressed={tab === id}
               >
+                <span className="font-mono text-[11px] opacity-60">{String(index + 1).padStart(2, "0")}</span>
                 <Icon size={17} />
                 {label as string}
               </button>
@@ -1094,16 +1103,16 @@ function App() {
 
         {tab === "onboarding" && (
           <section className="grid gap-5">
-            <Card className="overflow-hidden border-[#0B0B0C] bg-[#0B0B0C] text-[#F5F2ED]">
+            <Card className="ev-spotlight overflow-hidden border-[#0B0B0C] bg-[#0B0B0C] text-[#F5F2ED]">
               <div className="grid gap-6 p-6 lg:grid-cols-[1.1fr_0.9fr] lg:p-8">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">Plug-and-play finance ops</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">Private client operating layer</p>
                   <h2 className="brand-display mt-3 max-w-4xl text-4xl leading-none tracking-[-0.02em] text-[#F5F2ED] sm:text-5xl lg:text-6xl">
-                    Administratie voor autodetailers die zichzelf bijwerkt.
+                    Financial control voor detailbedrijven op niveau.
                   </h2>
                   <p className="mt-5 max-w-2xl text-base leading-7 text-[#F5F2ED]/72">
-                    Klant koppelt inbox, Slack, boekhouder en bankbestand. Daarna haalt het systeem facturen,
-                    loonstroken en vaste lasten op, toont bewijsstukken en stuurt reminders voordat cashflow pijn doet.
+                    Koppel inbox, Slack, boekhouder en bankdata. Het systeem structureert facturen,
+                    loonstroken, bewijsstukken en deadlines in één branded workspace.
                   </p>
                   <div className="mt-6 grid gap-3 sm:grid-cols-3">
                     <MiniStat label="Setup" value={`${onboardingProgress}%`} />
@@ -2585,6 +2594,15 @@ function App() {
   );
 }
 
+function HeaderMark({ icon: Icon, label }: { icon: typeof BriefcaseBusiness; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-[#E8D9B8]/15 bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-[#F5F2ED]/68">
+      <Icon size={12} className="text-[#E8D9B8]" />
+      {label}
+    </span>
+  );
+}
+
 function CommandCenter({
   clientName,
   systemScore,
@@ -2604,11 +2622,11 @@ function CommandCenter({
 }) {
   return (
     <section className="ev-command-grid rounded-2xl border border-[#E8D9B8]/70 bg-white/88 p-3 shadow-sm backdrop-blur-xl">
-      <div className="rounded-xl bg-[#0B0B0C] p-4 text-[#F5F2ED]">
+      <div className="ev-command-primary rounded-xl bg-[#0B0B0C] p-4 text-[#F5F2ED]">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">Command status</p>
-            <p className="mt-2 text-2xl font-semibold tracking-[-0.02em]">{systemScore}% operational</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#E8D9B8]">Control index</p>
+            <p className="mt-2 text-2xl font-semibold tracking-[-0.02em]">{systemScore}% governed</p>
           </div>
           <Activity className="text-[#2D5BFF]" size={26} />
         </div>
@@ -2617,7 +2635,7 @@ function CommandCenter({
         </div>
       </div>
 
-      <CommandPill icon={Building2} label="Tenant" value={clientName} />
+      <CommandPill icon={Building2} label="Workspace" value={clientName} />
       <CommandPill icon={CalendarClock} label="Periode" value={dateLabel} />
       <CommandPill icon={Banknote} label="Cashruimte" value={euro.format(cashCoverage)} danger={cashCoverage < 0} />
       <CommandPill icon={FileCheck2} label="Bewijsdekking" value={`${proofCoverage}%`} />
@@ -2629,12 +2647,12 @@ function CommandCenter({
       >
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
           <TimerReset size={15} />
-          Volgende actie
+          Priority action
         </div>
         <p className="mt-2 line-clamp-2 text-sm font-semibold text-[#0B0B0C]">
           {nextReminder
             ? `${nextReminder.relation} · ${nextReminder.invoice} · ${nextReminder.action}`
-            : "Geen acute reminders in deze selectie"}
+            : "Geen acute reminders binnen deze selectie"}
         </p>
       </button>
     </section>
