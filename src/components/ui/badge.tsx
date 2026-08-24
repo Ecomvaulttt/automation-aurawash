@@ -4,11 +4,11 @@ import { cn } from "../../lib/utils";
 type BadgeTone = "neutral" | "good" | "warn" | "danger" | "accent";
 
 const tones: Record<BadgeTone, string> = {
-  neutral: "bg-[#F5F2ED] text-neutral-700 ring-[#E8D9B8]",
+  neutral: "bg-[#f8f9fa] text-[#67748e] ring-[#e9ecef]",
   good: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   warn: "bg-amber-50 text-amber-800 ring-amber-200",
   danger: "bg-red-50 text-red-700 ring-red-200",
-  accent: "bg-[#2D5BFF]/10 text-[#2D5BFF] ring-[#2D5BFF]/25",
+  accent: "bg-[#e9f8ff] text-[#2152ff] ring-[#21d4fd]/25",
 };
 
 export function Badge({

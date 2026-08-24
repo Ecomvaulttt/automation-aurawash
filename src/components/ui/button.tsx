@@ -7,10 +7,10 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-[#0B0B0C] text-[#F5F2ED] shadow-[0_10px_24px_rgba(11,11,12,0.16)] hover:bg-[#17171A]",
-        secondary: "bg-white/86 text-[#0B0B0C] shadow-[inset_0_0_0_1px_rgba(232,217,184,0.78),0_8px_22px_rgba(31,25,15,0.04)] backdrop-blur-xl hover:bg-white",
-        accent: "bg-[#2D5BFF] text-white shadow-[0_14px_30px_rgba(45,91,255,0.26)] hover:bg-[#1F47E0]",
-        ghost: "text-[#0B0B0C] hover:bg-[#2D5BFF]/10",
+        default: "bg-[#344767] text-white shadow-[0_4px_7px_rgba(52,71,103,0.18)] hover:bg-[#2b3c5a]",
+        secondary: "bg-white text-[#344767] shadow-[inset_2px_2px_5px_rgba(203,210,217,0.28),inset_-3px_-3px_7px_rgba(255,255,255,0.9),0_4px_7px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_18px_rgba(0,0,0,0.08)]",
+        accent: "bg-[linear-gradient(310deg,#2152ff,#21d4fd)] text-white shadow-[0_4px_11px_rgba(33,82,255,0.28)] hover:shadow-[0_8px_18px_rgba(33,82,255,0.34)]",
+        ghost: "text-[#344767] hover:bg-white hover:shadow-[0_4px_7px_rgba(0,0,0,0.04)]",
         danger: "bg-red-600 text-white hover:bg-red-700",
       },
       size: {
