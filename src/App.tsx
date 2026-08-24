@@ -73,7 +73,7 @@ const number = new Intl.NumberFormat("nl-NL", {
   maximumFractionDigits: 0,
 });
 
-const today = new Date().toISOString().slice(0, 10);
+const today = toIsoDate(new Date());
 const githubActionsUrl =
   "https://github.com/Ecomvaulttt/automation-aurawash/actions/workflows/send-email.yml";
 const defaultPayrollEmployee = samplePayrollDocs[0]?.employee ?? initialSalaries[0]?.name ?? "";
@@ -150,6 +150,14 @@ const dateRangePresets: Array<{ key: DateRangePreset; label: string }> = [
   { key: "last365", label: "Laatste 365 dagen" },
   { key: "total", label: "Totaal" },
 ];
+
+const primaryDateRangePresets = dateRangePresets.filter((preset) =>
+  ["today", "last7", "thisMonth", "thisQuarter", "year"].includes(preset.key),
+);
+
+const additionalDateRangePresets = dateRangePresets.filter((preset) =>
+  ["yesterday", "last30", "last90", "halfYear", "last365", "total"].includes(preset.key),
+);
 
 type AutomationSettings = {
   gmailAccount: string;
@@ -230,7 +238,10 @@ function parseIsoDate(value: string) {
 }
 
 function toIsoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function addDays(date: Date, days: number) {
@@ -1003,6 +1014,15 @@ function App() {
     downloadFile(`${name}-${today}.csv`, toCsv(rows), "text/csv;charset=utf-8");
   }
 
+  function selectDateRangePreset(preset: DateRangePreset) {
+    setDateRange(buildDateRange(preset));
+    if (preset === "thisQuarter") setPeriodView("kwartaal");
+    if (preset === "year" || preset === "last365") setPeriodView("jaar");
+    if (["today", "yesterday", "last7", "thisMonth", "last30", "last90"].includes(preset)) {
+      setPeriodView("maand");
+    }
+  }
+
   function exportJson() {
     downloadFile(
       `aurawash-instanties-pakket-${today}.json`,
@@ -1361,31 +1381,36 @@ function App() {
             <Card className="overflow-hidden">
               <SectionHeader title="Periode kiezen" note={dateRangeLabel(dateRange)} />
               <div className="grid gap-4 p-4">
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {dateRangePresets.map((preset) => (
+                <div className="ev-period-toolbar">
+                  <div className="ev-period-presets" role="group" aria-label="Snelle periode kiezen">
+                  {primaryDateRangePresets.map((preset) => (
                     <button
                       key={preset.key}
-                      onClick={() => {
-                        const nextRange = buildDateRange(preset.key);
-                        setDateRange(nextRange);
-                        if (preset.key === "thisQuarter") setPeriodView("kwartaal");
-                        if (preset.key === "year" || preset.key === "last365") setPeriodView("jaar");
-                        if (["today", "yesterday", "last7", "thisMonth", "last30", "last90"].includes(preset.key)) {
-                          setPeriodView("maand");
-                        }
-                      }}
-                      className={cn(
-                        "h-9 shrink-0 rounded-md px-3 text-sm font-semibold transition",
-                        dateRange.preset === preset.key
-                          ? "bg-[#0B0B0C] text-[#F5F2ED]"
-                          : "bg-[#F5F2ED] text-[#0B0B0C] ring-1 ring-[#E8D9B8]/80 hover:bg-white",
-                      )}
+                      type="button"
+                      onClick={() => selectDateRangePreset(preset.key)}
+                      className={cn("ev-period-preset", dateRange.preset === preset.key && "ev-period-preset-active")}
+                      aria-pressed={dateRange.preset === preset.key}
                     >
                       {preset.label}
                     </button>
                   ))}
+                  </div>
+                  <Select
+                    className={cn(
+                      "ev-period-more",
+                      additionalDateRangePresets.some((preset) => preset.key === dateRange.preset) && "ev-period-more-active",
+                    )}
+                    aria-label="Meer periodes"
+                    value={additionalDateRangePresets.some((preset) => preset.key === dateRange.preset) ? dateRange.preset : ""}
+                    onChange={(event) => selectDateRangePreset(event.target.value as DateRangePreset)}
+                  >
+                    <option value="" disabled>Meer periodes</option>
+                    {additionalDateRangePresets.map((preset) => (
+                      <option key={preset.key} value={preset.key}>{preset.label}</option>
+                    ))}
+                  </Select>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-[1fr_1fr_180px]">
+                <div className="ev-period-fields">
                   <Field label="Startdatum">
                     <Input
                       type="date"

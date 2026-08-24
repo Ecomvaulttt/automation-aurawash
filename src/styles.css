@@ -733,6 +733,84 @@ select {
   transform: translateY(-1px);
 }
 
+.ev-period-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ev-period-presets {
+  display: inline-flex;
+  min-width: 0;
+  gap: 3px;
+  border: 1px solid rgba(222, 226, 230, 0.72);
+  border-radius: 10px;
+  background: #f4f5f7;
+  padding: 4px;
+}
+
+.ev-period-preset {
+  min-height: 34px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  padding: 0 14px;
+  color: #67748e;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.ev-period-preset:hover {
+  background: rgba(255, 255, 255, 0.78);
+  color: #344767;
+}
+
+.ev-period-preset-active {
+  background: #ffffff;
+  color: #2152ff;
+  box-shadow: 0 3px 8px rgba(31, 39, 61, 0.09);
+}
+
+.ev-period-more {
+  width: 176px;
+  flex: 0 0 176px;
+}
+
+.ev-period-more-active {
+  border-color: rgba(45, 91, 255, 0.4);
+  color: #2152ff;
+  font-weight: 600;
+}
+
+.ev-period-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 180px;
+  gap: 12px;
+}
+
+.ev-canvas[data-theme="dark"] .ev-period-presets {
+  border-color: rgba(232, 217, 184, 0.14);
+  background: rgba(245, 242, 237, 0.055);
+}
+
+.ev-canvas[data-theme="dark"] .ev-period-preset {
+  color: rgba(245, 242, 237, 0.62);
+}
+
+.ev-canvas[data-theme="dark"] .ev-period-preset:hover {
+  background: rgba(245, 242, 237, 0.07);
+  color: #ffffff;
+}
+
+.ev-canvas[data-theme="dark"] .ev-period-preset-active {
+  background: #2d5bff;
+  color: #ffffff;
+  box-shadow: 0 5px 14px rgba(45, 91, 255, 0.28);
+}
+
 @media (max-width: 1180px) {
   .ev-command-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -855,6 +933,29 @@ table tbody tr:hover {
 
   .ev-topbar-actions > button {
     flex: 1;
+  }
+
+  .ev-period-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ev-period-presets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ev-period-preset:last-child {
+    grid-column: span 2;
+  }
+
+  .ev-period-more {
+    width: 100%;
+    flex-basis: auto;
+  }
+
+  .ev-period-fields {
+    grid-template-columns: 1fr;
   }
 
   .ev-payroll-fields {
