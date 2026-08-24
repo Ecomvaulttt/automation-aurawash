@@ -36,15 +36,17 @@ select {
 
 .brand-display {
   font-family: "Inter Tight", "Archivo Black Local", Inter, system-ui, sans-serif;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .ev-canvas {
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(240, 242, 245, 0.92) 45%, rgba(248, 249, 250, 0.98)),
-    #f8f9fa;
+  background: #f4f5f7;
   background-size: auto;
   transition: background 420ms cubic-bezier(0.16, 1, 0.3, 1), color 240ms ease;
+}
+
+.ev-canvas * {
+  letter-spacing: 0 !important;
 }
 
 .ev-canvas[data-theme="dark"] {
@@ -116,32 +118,32 @@ select {
 
 .ev-shell {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 20px;
   width: 100%;
-  max-width: 1536px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 20px;
 }
 
 .ev-sidebar {
   position: sticky;
-  top: 24px;
+  top: 20px;
   display: flex;
-  min-height: calc(100dvh - 48px);
+  min-height: calc(100dvh - 40px);
   flex-direction: column;
   gap: 14px;
   overflow: hidden;
   border: 0;
-  border-radius: 18px;
+  border-radius: 14px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 249, 250, 0.92)),
     #ffffff;
   padding: 16px;
   color: #344767;
   box-shadow:
-    0 20px 27px 0 rgba(0, 0, 0, 0.05),
-    0 8px 18px rgba(0, 0, 0, 0.035),
+    0 14px 30px rgba(31, 39, 61, 0.06),
+    0 3px 8px rgba(31, 39, 61, 0.035),
     inset 0 1px 0 rgba(255, 255, 255, 0.92);
 }
 
@@ -187,7 +189,7 @@ select {
   gap: 10px;
   width: 100%;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
   padding: 10px;
   color: #67748e;
@@ -226,7 +228,7 @@ select {
   height: 36px;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 9px;
   background: #ffffff;
   color: currentColor;
   box-shadow:
@@ -245,7 +247,7 @@ select {
 .ev-sidebar-panel {
   margin-top: auto;
   border: 0;
-  border-radius: 16px;
+  border-radius: 12px;
   background:
     linear-gradient(310deg, rgba(33, 82, 255, 0.96), rgba(33, 212, 253, 0.94)),
     #2152ff;
@@ -273,7 +275,8 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-radius: 16px;
+  border: 1px solid rgba(222, 226, 230, 0.78);
+  border-radius: 12px;
   background: #ffffff;
   padding: 10px 12px;
   box-shadow:
@@ -298,7 +301,7 @@ select {
 
 .ev-topbar {
   position: sticky;
-  top: 24px;
+  top: 20px;
   z-index: 10;
   display: flex;
   min-height: 70px;
@@ -306,11 +309,12 @@ select {
   justify-content: space-between;
   gap: 16px;
   border: 0;
-  border-radius: 16px;
+  border: 1px solid rgba(222, 226, 230, 0.58);
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.82);
   padding: 14px;
   box-shadow:
-    0 20px 27px 0 rgba(0, 0, 0, 0.05),
+    0 12px 28px rgba(31, 39, 61, 0.055),
     inset 0 1px 0 rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(16px) saturate(1.08);
 }
@@ -330,7 +334,7 @@ select {
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   background:
     linear-gradient(310deg, #2152ff, #21d4fd),
     #2152ff;
@@ -343,7 +347,7 @@ select {
   align-items: center;
   gap: 10px;
   border: 1px solid rgba(222, 226, 230, 0.82);
-  border-radius: 12px;
+  border-radius: 10px;
   background: #ffffff;
   padding: 9px 12px;
   color: #8392ab;
@@ -365,7 +369,6 @@ select {
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.26);
 }
 
-.ev-canvas[data-theme="dark"] .ev-titlebar-icon,
 .ev-canvas[data-theme="dark"] .ev-search-pill,
 .ev-canvas[data-theme="dark"] .ev-command-grid,
 .ev-canvas[data-theme="dark"] .ev-command-card,
@@ -376,6 +379,59 @@ select {
   box-shadow:
     0 18px 46px rgba(0, 0, 0, 0.24),
     inset 0 1px 0 rgba(245, 242, 237, 0.06);
+}
+
+.ev-canvas[data-theme="dark"] .ev-sidebar {
+  border: 1px solid rgba(232, 217, 184, 0.12);
+  background: #17171a;
+  color: #f5f2ed;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.3);
+}
+
+.ev-canvas[data-theme="dark"] .ev-sidebar-brand {
+  border-color: rgba(232, 217, 184, 0.12);
+}
+
+.ev-canvas[data-theme="dark"] .ev-sidebar-brand .text-\[\#F5F2ED\],
+.ev-canvas[data-theme="dark"] .ev-sidebar .text-\[\#F5F2ED\] {
+  color: #f5f2ed !important;
+}
+
+.ev-canvas[data-theme="dark"] .ev-sidebar-brand .text-\[\#F5F2ED\]\/48,
+.ev-canvas[data-theme="dark"] .ev-sidebar .text-\[\#F5F2ED\]\/48,
+.ev-canvas[data-theme="dark"] .ev-sidebar .text-\[\#F5F2ED\]\/50,
+.ev-canvas[data-theme="dark"] .ev-sidebar .text-\[\#F5F2ED\]\/58 {
+  color: rgba(245, 242, 237, 0.52) !important;
+}
+
+.ev-canvas[data-theme="dark"] .ev-nav-item {
+  color: rgba(245, 242, 237, 0.62);
+}
+
+.ev-canvas[data-theme="dark"] .ev-nav-item:hover,
+.ev-canvas[data-theme="dark"] .ev-nav-item-active {
+  border-color: rgba(232, 217, 184, 0.12);
+  background: rgba(245, 242, 237, 0.07);
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(245, 242, 237, 0.05);
+}
+
+.ev-canvas[data-theme="dark"] .ev-nav-icon {
+  background: rgba(245, 242, 237, 0.07);
+  box-shadow: none;
+}
+
+.ev-canvas[data-theme="dark"] .ev-nav-item-active .ev-nav-icon,
+.ev-canvas[data-theme="dark"] .ev-titlebar-icon {
+  background: linear-gradient(310deg, #2152ff, #21d4fd);
+  color: #ffffff;
+}
+
+.ev-canvas[data-theme="dark"] .ev-topbar-actions > button:first-of-type,
+.ev-canvas[data-theme="dark"] .ev-sidebar-footer .grid button:first-child {
+  background: rgba(245, 242, 237, 0.08);
+  color: #f5f2ed;
+  box-shadow: inset 0 0 0 1px rgba(232, 217, 184, 0.12);
 }
 
 .ev-canvas[data-theme="dark"] .ev-theme-control .text-\[\#344767\] {
@@ -391,18 +447,29 @@ select {
   background: rgba(69, 23, 28, 0.42);
 }
 
-.ev-spotlight {
+.ev-spotlight,
+.ev-setup-overview {
   position: relative;
   isolation: isolate;
 }
 
-.ev-spotlight::before {
+.ev-spotlight::before,
+.ev-setup-overview::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
   background:
     linear-gradient(310deg, rgba(33, 82, 255, 0.26), rgba(33, 212, 253, 0.18) 45%, transparent 68%);
+}
+
+.ev-setup-overview {
+  background: #111318 !important;
+  box-shadow: 0 18px 42px rgba(13, 18, 30, 0.16);
+}
+
+.ev-setup-overview::before {
+  background: linear-gradient(120deg, transparent 45%, rgba(45, 91, 255, 0.2));
 }
 
 .ev-command-primary {
@@ -613,7 +680,7 @@ select {
 .ev-command-grid {
   display: grid;
   grid-template-columns: minmax(190px, 1.22fr) repeat(4, minmax(0, 1fr)) minmax(180px, 1.16fr);
-  gap: 18px;
+  gap: 12px;
   border: 0;
   border-radius: 16px;
   background: transparent;
@@ -631,11 +698,12 @@ select {
 .ev-command-action {
   min-width: 0;
   border: 0;
-  border-radius: 16px;
+  border: 1px solid rgba(222, 226, 230, 0.58);
+  border-radius: 12px;
   background: #ffffff;
   padding: 16px;
   box-shadow:
-    0 20px 27px 0 rgba(0, 0, 0, 0.05),
+    0 10px 24px rgba(31, 39, 61, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
@@ -688,7 +756,30 @@ select {
 .table-scroll {
   scrollbar-color: #c8c8c8 transparent;
   scrollbar-width: thin;
-  border-radius: 0 0 16px 16px;
+  border-radius: 0 0 12px 12px;
+}
+
+.ev-payroll-document {
+  display: grid;
+  gap: 18px;
+  background: rgba(248, 249, 250, 0.72);
+}
+
+.ev-payroll-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ev-payroll-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ev-canvas[data-theme="dark"] .ev-payroll-document {
+  background: rgba(245, 242, 237, 0.035);
 }
 
 .table-scroll::-webkit-scrollbar {
@@ -745,11 +836,11 @@ table tbody tr:hover {
 
   .ev-sidebar,
   .ev-topbar {
-    border-radius: 18px;
+    border-radius: 12px;
   }
 
   .ev-sidebar-nav {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .ev-topbar {
@@ -764,6 +855,20 @@ table tbody tr:hover {
 
   .ev-topbar-actions > button {
     flex: 1;
+  }
+
+  .ev-payroll-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .ev-payroll-actions {
+    align-items: stretch;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .ev-payroll-actions > button:not([aria-label]) {
+    flex: 1 1 140px;
   }
 }
 

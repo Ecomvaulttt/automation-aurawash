@@ -30,12 +30,14 @@ import {
   ReceiptText,
   Search,
   Send,
+  Settings2,
   ShieldCheck,
   TimerReset,
   Upload,
   UserRound,
   WalletCards,
   X,
+  XCircle,
 } from "lucide-react";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -412,7 +414,7 @@ function escapeHtml(value: string) {
 }
 
 function App() {
-  const [tab, setTab] = useState<Tab>("onboarding");
+  const [tab, setTab] = useState<Tab>("overzicht");
   const [query, setQuery] = useState("");
   const [theme, setTheme] = useStoredState<ThemeMode>("ecomvault-theme", "light");
   const [periodView, setPeriodView] = useStoredState<PeriodView>("ecomvault-period-view", "maand");
@@ -1038,7 +1040,7 @@ function App() {
               )}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-[#F5F2ED]">EcomVault Ops</p>
+              <p className="text-sm font-semibold text-[#F5F2ED]">EcomVault Finance</p>
               <p className="truncate text-xs text-[#F5F2ED]/48">{clientProfile.companyName}</p>
             </div>
           </div>
@@ -1068,9 +1070,9 @@ function App() {
 
           <div className="ev-sidebar-panel">
             <div>
-              <p className="text-sm font-semibold text-[#F5F2ED]">{systemScore}% governance</p>
+              <p className="text-sm font-semibold text-[#F5F2ED]">{systemScore}% ingericht</p>
               <p className="mt-1 text-xs leading-5 text-[#F5F2ED]/50">
-                {proofCoverage}% bewijsdekking · {reminders.length} acties
+                {proofCoverage}% bewijs compleet · {reminders.length} acties
               </p>
             </div>
             <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
@@ -1110,10 +1112,12 @@ function App() {
                 <ActiveTabIcon size={20} />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-neutral-500">{clientProfile.sector}</p>
-                <h1 className="brand-display truncate text-2xl text-[#0B0B0C] sm:text-3xl">
+                <h1 className="brand-display truncate text-2xl font-semibold text-[#0B0B0C] sm:text-3xl">
                   {activeTabItem.label}
                 </h1>
+                <p className="truncate text-sm text-neutral-500">
+                  {clientProfile.companyName} · {activeTabItem.description}
+                </p>
               </div>
             </div>
 
@@ -1145,21 +1149,24 @@ function App() {
 
         {tab === "onboarding" && (
           <section className="grid gap-5">
-            <Card className="ev-spotlight overflow-hidden border-[#0B0B0C] bg-[#0B0B0C] text-[#F5F2ED]">
-              <div className="grid gap-6 p-6 lg:grid-cols-[1.1fr_0.9fr] lg:p-8">
+            <Card className="ev-setup-overview overflow-hidden border-[#0B0B0C] bg-[#0B0B0C] text-[#F5F2ED]">
+              <div className="grid gap-6 p-6 lg:grid-cols-[0.95fr_1.05fr] lg:p-7">
                 <div>
-                  <p className="text-sm font-medium text-[#E8D9B8]/82">Private client operating layer</p>
-                  <h2 className="brand-display mt-3 max-w-4xl text-4xl leading-none tracking-[-0.02em] text-[#F5F2ED] sm:text-5xl lg:text-6xl">
-                    Financial control voor detailbedrijven op niveau.
+                  <div className="flex items-center gap-2 text-sm font-medium text-[#E8D9B8]/82">
+                    <Settings2 size={16} />
+                    Bedrijfsconfiguratie
+                  </div>
+                  <h2 className="brand-display mt-4 max-w-2xl text-3xl font-semibold leading-tight text-[#F5F2ED]">
+                    Implementatieoverzicht
                   </h2>
-                  <p className="mt-5 max-w-2xl text-base leading-7 text-[#F5F2ED]/72">
-                    Koppel inbox, Slack, boekhouder en bankdata. Het systeem structureert facturen,
-                    loonstroken, bewijsstukken en deadlines in één branded workspace.
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-[#F5F2ED]/68">
+                    Beheer hier de koppelingen, klantgegevens en veilige bankimport die nodig zijn
+                    om facturen, loonstroken en deadlines automatisch te verwerken.
                   </p>
                   <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                    <MiniStat label="Setup" value={`${onboardingProgress}%`} />
-                    <MiniStat label="Bewijzen" value={`${invoiceDocs.length}`} />
-                    <MiniStat label="Alerts" value={`${reminders.length}`} />
+                    <MiniStat label="Configuratie" value={`${onboardingProgress}%`} />
+                    <MiniStat label="Documenten" value={`${invoiceDocs.length}`} />
+                    <MiniStat label="Open acties" value={`${reminders.length}`} />
                   </div>
                 </div>
                 <div className="rounded-2xl border border-[#E8D9B8]/20 bg-white/[0.06] p-5 backdrop-blur">
@@ -1186,10 +1193,10 @@ function App() {
             </Card>
 
             <section className="grid gap-4 lg:grid-cols-4">
-              <InstallTile icon={Mail} title="Inbox" detail="IMAP/Gmail app password voor facturen, loonstroken en vaste lasten." status="Required" />
-              <InstallTile icon={Send} title="SMTP" detail="Uitgaande klantmails en betalingsherinneringen vanuit eigen domein." status="Required" />
-              <InstallTile icon={MessageSquareWarning} title="Slack" detail="Incoming webhook voor deadline alerts en bank-upload reminders." status="Required" />
-              <InstallTile icon={LockKeyhole} title="Bankdata" detail="V1 via CSV/XLS upload. V2 via PSD2-provider zodra product klaar is." status="Safe V1" />
+              <InstallTile icon={Mail} title="Inbox" detail="IMAP/Gmail-koppeling voor facturen, loonstroken en vaste lasten." status="Vereist" />
+              <InstallTile icon={Send} title="Uitgaande e-mail" detail="Klantmails en betalingsherinneringen vanuit het eigen domein." status="Vereist" />
+              <InstallTile icon={MessageSquareWarning} title="Slack" detail="Meldingen voor deadlines, controles en bankuploads." status="Vereist" />
+              <InstallTile icon={LockKeyhole} title="Bankimport" detail="Veilige CSV/XLS-import zonder bankinlog in het systeem." status="Beveiligd" />
             </section>
 
             <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
@@ -1839,9 +1846,9 @@ function App() {
               </div>
               <div className="grid divide-y divide-[#E8D9B8]/60">
                 {filteredPayrollProfileDocs.map((doc) => (
-                  <article key={doc.id} className="grid gap-4 p-4 lg:grid-cols-[1.2fr_150px_150px_150px_190px_44px] lg:items-center">
+                  <article key={doc.id} className="ev-payroll-document p-5">
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <FileCheck2 size={18} className="text-neutral-500" />
                         <h3 className="truncate font-semibold text-neutral-950">{doc.fileName}</h3>
                         <Badge tone={doc.status === "Goedgekeurd" ? "good" : doc.status === "Afgekeurd" ? "danger" : "warn"}>{doc.status}</Badge>
@@ -1852,46 +1859,52 @@ function App() {
                       </p>
                     </div>
 
-                    <Field label="Bruto">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={doc.gross}
-                        onChange={(event) => updatePayroll(doc.id, { gross: Number(event.target.value) })}
-                      />
-                    </Field>
-                    <Field label="Netto">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={doc.net}
-                        onChange={(event) => updatePayroll(doc.id, { net: Number(event.target.value) })}
-                      />
-                    </Field>
-                    <Select
-                      value={doc.status}
-                      onChange={(event) =>
-                        updatePayroll(doc.id, { status: event.target.value as PayrollDoc["status"] })
-                      }
-                    >
-                      <option>Controle</option>
-                      <option>Goedgekeurd</option>
-                      <option>Afgekeurd</option>
-                      <option>Ontbreekt</option>
-                    </Select>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="ev-payroll-fields">
+                      <Field label="Bruto salaris">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={doc.gross}
+                          onChange={(event) => updatePayroll(doc.id, { gross: Number(event.target.value) })}
+                        />
+                      </Field>
+                      <Field label="Netto salaris">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={doc.net}
+                          onChange={(event) => updatePayroll(doc.id, { net: Number(event.target.value) })}
+                        />
+                      </Field>
+                      <Field label="Controlestatus">
+                        <Select
+                          value={doc.status}
+                          onChange={(event) =>
+                            updatePayroll(doc.id, { status: event.target.value as PayrollDoc["status"] })
+                          }
+                        >
+                          <option>Controle</option>
+                          <option>Goedgekeurd</option>
+                          <option>Afgekeurd</option>
+                          <option>Ontbreekt</option>
+                        </Select>
+                      </Field>
+                    </div>
+                    <div className="ev-payroll-actions">
                       <Button variant="accent" size="sm" onClick={() => updatePayroll(doc.id, { status: "Goedgekeurd" })}>
-                        Goed
+                        <CheckCircle2 size={16} />
+                        Goedkeuren
                       </Button>
                       <Button variant="secondary" size="sm" onClick={() => updatePayroll(doc.id, { status: "Afgekeurd" })}>
-                        Afkeur
+                        <XCircle size={16} />
+                        Afkeuren
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => removePayroll(doc.id)} aria-label="Verwijder loonstrook" title="Verwijderen">
+                        <X size={18} />
                       </Button>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => removePayroll(doc.id)} aria-label="Verwijder loonstrook">
-                      <X size={18} />
-                    </Button>
                   </article>
                 ))}
                 {!filteredPayrollProfileDocs.length && (
