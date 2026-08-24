@@ -1079,12 +1079,15 @@ function App() {
           </div>
 
           <div className="ev-sidebar-footer">
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
-              <span className="text-xs font-medium text-[#F5F2ED]/58">{theme === "dark" ? "Dark mode" : "Light mode"}</span>
+            <div className="ev-theme-control">
+              <div>
+                <span className="block text-xs font-semibold text-[#344767]">Licht / donker</span>
+                <span className="block text-[11px] font-medium text-[#8392ab]">{theme === "dark" ? "Donkere modus" : "Lichte modus"}</span>
+              </div>
               <SkyToggle
                 checked={theme === "dark"}
                 onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
-                label={theme === "dark" ? "Schakel naar light theme" : "Schakel naar dark theme"}
+                label={theme === "dark" ? "Schakel naar lichte modus" : "Schakel naar donkere modus"}
               />
             </div>
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
