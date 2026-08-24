@@ -860,6 +860,302 @@ select {
   background: rgba(245, 242, 237, 0.035);
 }
 
+.ev-ai-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+
+.ev-ai-launcher {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  display: inline-flex;
+  min-width: 126px;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(310deg, #2152ff, #21d4fd);
+  padding: 0 16px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 12px 28px rgba(33, 82, 255, 0.3);
+  pointer-events: auto;
+  transition: opacity 160ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.ev-ai-launcher:hover {
+  box-shadow: 0 16px 34px rgba(33, 82, 255, 0.38);
+  transform: translateY(-2px);
+}
+
+.ev-ai-layer-open .ev-ai-launcher {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+}
+
+.ev-ai-panel {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  width: min(420px, calc(100vw - 32px));
+  height: min(640px, calc(100dvh - 48px));
+  overflow: hidden;
+  flex-direction: column;
+  border: 1px solid rgba(222, 226, 230, 0.82);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 28px 80px rgba(31, 39, 61, 0.2);
+  pointer-events: auto;
+  animation: ev-ai-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes ev-ai-enter {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ev-ai-header {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(222, 226, 230, 0.72);
+  padding: 13px 14px;
+}
+
+.ev-ai-avatar {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(310deg, #2152ff, #21d4fd);
+  color: #ffffff;
+  box-shadow: 0 7px 16px rgba(33, 82, 255, 0.24);
+}
+
+.ev-ai-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #f1f3f5;
+  padding: 3px 7px;
+  color: #67748e;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ev-ai-status-live {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.ev-ai-icon-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #67748e;
+}
+
+.ev-ai-icon-button:hover {
+  background: #f1f3f5;
+  color: #344767;
+}
+
+.ev-ai-messages {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  background: #f7f8fa;
+  padding: 16px;
+  scrollbar-color: #c8cdd5 transparent;
+  scrollbar-width: thin;
+}
+
+.ev-ai-message {
+  display: flex;
+  max-width: 92%;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ev-ai-message p {
+  margin: 0;
+  border: 1px solid rgba(222, 226, 230, 0.8);
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 10px 12px;
+  color: #344767;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.ev-ai-message-user {
+  align-self: flex-end;
+  justify-content: flex-end;
+}
+
+.ev-ai-message-user p {
+  border-color: transparent;
+  background: #2d5bff;
+  color: #ffffff;
+}
+
+.ev-ai-message-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border-radius: 8px;
+  background: #eaf0ff;
+  color: #2d5bff;
+}
+
+.ev-ai-suggestions {
+  display: grid;
+  gap: 7px;
+  padding-left: 36px;
+}
+
+.ev-ai-suggestions button {
+  min-height: 38px;
+  border: 1px solid rgba(210, 214, 218, 0.92);
+  border-radius: 9px;
+  background: #ffffff;
+  padding: 8px 11px;
+  color: #344767;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.ev-ai-suggestions button:hover {
+  border-color: rgba(45, 91, 255, 0.35);
+  color: #2152ff;
+}
+
+.ev-ai-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #67748e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ev-ai-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  border-top: 1px solid rgba(222, 226, 230, 0.72);
+  background: #ffffff;
+  padding: 12px 12px 8px;
+}
+
+.ev-ai-composer textarea {
+  min-height: 42px;
+  max-height: 104px;
+  flex: 1;
+  resize: none;
+  border: 1px solid #d2d6da;
+  border-radius: 9px;
+  background: #ffffff;
+  padding: 10px 12px;
+  color: #344767;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  outline: none;
+}
+
+.ev-ai-composer textarea:focus {
+  border-color: #2d5bff;
+  box-shadow: 0 0 0 3px rgba(45, 91, 255, 0.1);
+}
+
+.ev-ai-composer button {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: linear-gradient(310deg, #2152ff, #21d4fd);
+  color: #ffffff;
+  box-shadow: 0 6px 14px rgba(33, 82, 255, 0.22);
+}
+
+.ev-ai-composer button:disabled {
+  box-shadow: none;
+  filter: grayscale(0.35);
+  opacity: 0.4;
+}
+
+.ev-ai-disclaimer {
+  margin: 0;
+  background: #ffffff;
+  padding: 0 12px 10px;
+  color: #98a2b3;
+  font-size: 10px;
+  text-align: center;
+}
+
+.ev-canvas[data-theme="dark"] .ev-ai-panel,
+.ev-canvas[data-theme="dark"] .ev-ai-header,
+.ev-canvas[data-theme="dark"] .ev-ai-composer,
+.ev-canvas[data-theme="dark"] .ev-ai-disclaimer {
+  border-color: rgba(232, 217, 184, 0.14);
+  background: #17171a;
+}
+
+.ev-canvas[data-theme="dark"] .ev-ai-messages {
+  background: #101012;
+}
+
+.ev-canvas[data-theme="dark"] .ev-ai-message p,
+.ev-canvas[data-theme="dark"] .ev-ai-suggestions button {
+  border-color: rgba(232, 217, 184, 0.14);
+  background: #202024;
+  color: #f5f2ed;
+}
+
+.ev-canvas[data-theme="dark"] .ev-ai-message-user p {
+  border-color: transparent;
+  background: #2d5bff;
+  color: #ffffff;
+}
+
+.ev-canvas[data-theme="dark"] .ev-ai-icon-button:hover,
+.ev-canvas[data-theme="dark"] .ev-ai-status {
+  background: rgba(245, 242, 237, 0.08);
+  color: rgba(245, 242, 237, 0.72);
+}
+
+.ev-canvas[data-theme="dark"] .ev-ai-status-live {
+  background: rgba(16, 185, 129, 0.14);
+  color: #6ee7b7;
+}
+
 .table-scroll::-webkit-scrollbar {
   height: 10px;
 }
@@ -970,6 +1266,19 @@ table tbody tr:hover {
 
   .ev-payroll-actions > button:not([aria-label]) {
     flex: 1 1 140px;
+  }
+
+  .ev-ai-launcher {
+    right: 10px;
+    bottom: 10px;
+    min-width: 112px;
+  }
+
+  .ev-ai-panel {
+    inset: 10px;
+    width: auto;
+    height: auto;
+    border-radius: 12px;
   }
 }
 

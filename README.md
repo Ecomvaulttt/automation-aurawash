@@ -26,6 +26,7 @@ AuraWash/B&T is de eerste demo-tenant.
 - Automatische klantmail voor te ontvangen facturen wanneer betaling nog niet binnen is.
 - Branded factuur HTML export per klant.
 - Boekhouderpakket HTML export met kosten, cashflow, activa/passiva indicatie en bewijsstukken.
+- Ingebouwde EcomVault AI-helper met actuele administratiecontext en lokale fallback.
 - Lokale wijzigingen blijven bewaard in `localStorage`.
 
 ## Starten
@@ -44,6 +45,23 @@ npm run build
 ```
 
 De build maakt ook `aurawash-administratie.html`, een single-file HTML die direct geopend kan worden.
+
+## AI-helper
+
+De chat werkt direct met lokale antwoorden over cash, facturen, loonstroken, deadlines en exports. Voor vrije AI-vragen via de OpenAI Responses API:
+
+```bash
+cp .env.example .env.local
+```
+
+Vul daarna alleen server-side in:
+
+```text
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-5.4-mini
+```
+
+De browser ontvangt de API-key nooit. De route `api/ai-helper.mjs` is geschikt voor een serverless deployment; zet dezelfde environment variables ook bij de hostingprovider. De single-file HTML gebruikt zonder server automatisch de lokale kennislaag.
 
 ## E-mail automation
 

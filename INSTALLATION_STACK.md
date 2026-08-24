@@ -9,6 +9,15 @@ npm run dev
 
 Open daarna `http://localhost:5173/`.
 
+Optioneel voor volledige EcomVault AI-antwoorden:
+
+```text
+OPENAI_API_KEY
+OPENAI_MODEL=gpt-5.4-mini
+```
+
+Zet deze waarden alleen server-side in `.env.local` of bij de hostingprovider. Zonder key blijft de ingebouwde lokale administratie-assistent beschikbaar.
+
 ## V1 live automation
 
 Benodigd per klant:

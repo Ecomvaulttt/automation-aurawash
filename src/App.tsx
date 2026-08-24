@@ -1,4 +1,4 @@
-import { ChangeEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -22,16 +22,19 @@ import {
   Gauge,
   Landmark,
   LockKeyhole,
+  LoaderCircle,
   Mail,
   MessageSquareWarning,
   Palette,
   PlugZap,
   Plus,
   ReceiptText,
+  RotateCcw,
   Search,
   Send,
   Settings2,
   ShieldCheck,
+  Sparkles,
   TimerReset,
   Upload,
   UserRound,
@@ -135,6 +138,44 @@ type FinancialMetric = {
   detail: string;
   icon: typeof Banknote;
   danger?: boolean;
+};
+
+type AiMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+};
+
+type AiContextSnapshot = {
+  companyName: string;
+  currentView: Tab;
+  period: string;
+  financial: {
+    available: number;
+    salaries: number;
+    openTaxes: number;
+    openPayables: number;
+    expectedReceivables: number;
+    fixedCosts: number;
+    cashCoverage: number;
+  };
+  counts: {
+    activeEmployees: number;
+    payrollDocuments: number;
+    invoiceDocuments: number;
+    openPayables: number;
+    openReceivables: number;
+  };
+  reminders: Array<{
+    relation: string;
+    invoice: string;
+    amount: number;
+    dueDate: string;
+    action: string;
+  }>;
+  openPayables: Array<Record<string, string | number>>;
+  openReceivables: Array<Record<string, string | number>>;
+  employees: Array<Record<string, string | number>>;
 };
 
 const dateRangePresets: Array<{ key: DateRangePreset; label: string }> = [
@@ -318,6 +359,37 @@ function statusTone(status: string) {
   return "neutral";
 }
 
+function localAiReply(question: string, context: AiContextSnapshot) {
+  const normalized = question.toLowerCase();
+
+  if (/cash|geld|ruimte|beschikbaar/.test(normalized)) {
+    return `Er is ${euro.format(context.financial.available)} beschikbaar. Na salarissen, belastingen, open facturen en vaste lasten is de berekende cashruimte ${euro.format(context.financial.cashCoverage)}.`;
+  }
+
+  if (/factur|betalen|ontvangen|openstaand/.test(normalized)) {
+    return `Er staan ${context.counts.openPayables} te betalen facturen open voor ${euro.format(context.financial.openPayables)}. Te ontvangen: ${context.counts.openReceivables} facturen voor ${euro.format(context.financial.expectedReceivables)}.`;
+  }
+
+  if (/salaris|loon|medewerker/.test(normalized)) {
+    return `Het systeem bevat ${context.counts.activeEmployees} actieve medewerkers en ${context.counts.payrollDocuments} loonstroken. Het salarisbedrag in de huidige selectie is ${euro.format(context.financial.salaries)}.`;
+  }
+
+  if (/vandaag|actie|deadline|eerst|prioriteit/.test(normalized)) {
+    if (!context.reminders.length) return "Er staan momenteel geen open reminders in de administratie.";
+    const list = context.reminders
+      .slice(0, 3)
+      .map((item) => `${item.relation} (${item.invoice}): ${item.action}`)
+      .join("; ");
+    return `De eerstvolgende aandachtspunten zijn: ${list}.`;
+  }
+
+  if (/export|boekhouder|instantie/.test(normalized)) {
+    return "Open Instanties voor het volledige gegevenspakket of gebruik Export rechtsboven. Daar staan de losse CSV-bestanden en het boekhouderpakket.";
+  }
+
+  return "Ik kan vragen beantwoorden over beschikbaar geld, open facturen, betalingen, loonstroken, deadlines, medewerkers en exports. Voor vrije vervolgvragen activeert de beheerder de beveiligde OpenAI-koppeling.";
+}
+
 function buildReminders(
   payables: Payable[],
   receivables: Receivable[],
@@ -490,11 +562,28 @@ function App() {
     subject: "AuraWash administratie update",
     body: "Hi,\n\nDe AuraWash administratie is bijgewerkt. De actuele loonstroken, facturen en betaalstatussen staan klaar in het exportpakket.\n\nGroet,\nAuraWash",
   });
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiMode, setAiMode] = useState<"ai" | "local" | null>(null);
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>([
+    {
+      id: "ai-welcome",
+      role: "assistant",
+      content: "Hoi, ik ben EcomVault AI. Vraag me iets over cash, facturen, loonstroken, deadlines of exports.",
+    },
+  ]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const invoiceFileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const bankInputRef = useRef<HTMLInputElement>(null);
+  const aiMessagesRef = useRef<HTMLDivElement>(null);
   const activeSalaries = salaries.filter(isActiveEmployee);
+
+  useEffect(() => {
+    if (!aiOpen) return;
+    aiMessagesRef.current?.scrollTo({ top: aiMessagesRef.current.scrollHeight, behavior: "smooth" });
+  }, [aiLoading, aiMessages, aiOpen]);
 
   const totals = useMemo(() => {
     const cash = sum(balances.map((item) => item.amount));
@@ -628,6 +717,61 @@ function App() {
     : 0;
   const systemScore = Math.round((onboardingProgress + payrollCompletion + proofCoverage) / 3);
   const nextReminder = reminders[0];
+  const aiContext: AiContextSnapshot = {
+    companyName: clientProfile.companyName,
+    currentView: tab,
+    period: dateRangeLabel(dateRange),
+    financial: {
+      available: displayTotals.cash,
+      salaries: displayTotals.salary,
+      openTaxes: displayTotals.openTaxes,
+      openPayables: displayTotals.openPayables,
+      expectedReceivables: displayTotals.expectedReceivables,
+      fixedCosts: displayTotals.fixedOpen,
+      cashCoverage,
+    },
+    counts: {
+      activeEmployees: activeSalaries.length,
+      payrollDocuments: payrollDocs.length,
+      invoiceDocuments: invoiceDocs.length,
+      openPayables: payables.filter((item) => isPaidNo(item.paid)).length,
+      openReceivables: receivables.filter((item) => isPaidNo(item.paid)).length,
+    },
+    reminders: reminders.slice(0, 8).map((item) => ({
+      relation: item.relation,
+      invoice: item.invoice,
+      amount: item.amount,
+      dueDate: item.dueDate,
+      action: item.action,
+    })),
+    openPayables: payables
+      .filter((item) => isPaidNo(item.paid))
+      .slice(0, 12)
+      .map((item) => ({
+        relation: item.company,
+        invoice: item.invoice,
+        amount: item.amount,
+        deadline: item.deadline,
+        priority: item.priority,
+        note: item.note || "",
+      })),
+    openReceivables: receivables
+      .filter((item) => isPaidNo(item.paid))
+      .slice(0, 12)
+      .map((item) => ({
+        relation: item.client,
+        invoice: item.invoice,
+        amount: item.amount,
+        dueDate: item.dueDate || "",
+        action: item.action || "",
+      })),
+    employees: activeSalaries.map((salary) => ({
+      name: salary.name,
+      monthlyTotal: salary.total,
+      status: salary.status || "Actief",
+      payrollDocuments: payrollDocs.filter((doc) => doc.employee === salary.name).length,
+    })),
+  };
 
   const payrollMonths = Array.from(new Set(payrollDocs.map((doc) => doc.period))).filter(Boolean);
   const selectedPayrollProfile =
@@ -974,6 +1118,77 @@ function App() {
     setPayrollDocs(samplePayrollDocs);
     setInvoiceDocs(sampleInvoiceDocuments);
     setSelectedDocId(sampleInvoiceDocuments[0]?.id ?? "");
+  }
+
+  function clearAiConversation() {
+    setAiMessages([
+      {
+        id: `ai-welcome-${Date.now()}`,
+        role: "assistant",
+        content: "Nieuwe chat gestart. Waar kan ik je mee helpen?",
+      },
+    ]);
+    setAiMode(null);
+    setAiInput("");
+  }
+
+  async function sendAiMessage(value = aiInput) {
+    const question = value.trim();
+    if (!question || aiLoading) return;
+
+    const userMessage: AiMessage = {
+      id: `ai-user-${Date.now()}`,
+      role: "user",
+      content: question,
+    };
+    const requestMessages = [...aiMessages, userMessage]
+      .filter((message) => message.id !== "ai-welcome")
+      .slice(-10)
+      .map(({ role, content }) => ({ role, content }));
+
+    setAiOpen(true);
+    setAiInput("");
+    setAiMessages((current) => [...current, userMessage]);
+    setAiLoading(true);
+
+    if (window.location.protocol === "file:") {
+      setAiMode("local");
+      setAiMessages((current) => [
+        ...current,
+        { id: `ai-local-${Date.now()}`, role: "assistant", content: localAiReply(question, aiContext) },
+      ]);
+      setAiLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30_000);
+
+    try {
+      const response = await fetch("/api/ai-helper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: requestMessages, context: aiContext }),
+        signal: controller.signal,
+      });
+      const payload = (await response.json()) as { answer?: string; mode?: "ai" | "local"; error?: string };
+      if (!response.ok || !payload.answer) throw new Error(payload.error || "AI antwoord ontbreekt");
+
+      setAiMode(payload.mode ?? "ai");
+      setAiMessages((current) => [
+        ...current,
+        { id: `ai-assistant-${Date.now()}`, role: "assistant", content: payload.answer as string },
+      ]);
+    } catch {
+      setAiMode("local");
+      setAiMessages((current) => [
+        ...current,
+        { id: `ai-local-${Date.now()}`, role: "assistant", content: localAiReply(question, aiContext) },
+      ]);
+    } finally {
+      window.clearTimeout(timeout);
+      setAiLoading(false);
+    }
   }
 
   const payrollRows: ExportRow[] = payrollDocs.map((doc) => ({
@@ -1440,7 +1655,7 @@ function App() {
               </div>
             </Card>
 
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1360px]:grid-cols-6">
               {financialMetrics.map((metric) => (
                 <Metric
                   key={metric.key}
@@ -2671,7 +2886,145 @@ function App() {
         )}
         </section>
       </div>
+
+      <AiHelper
+        open={aiOpen}
+        messages={aiMessages}
+        input={aiInput}
+        loading={aiLoading}
+        mode={aiMode}
+        messagesRef={aiMessagesRef}
+        onOpenChange={setAiOpen}
+        onInputChange={setAiInput}
+        onSubmit={sendAiMessage}
+        onClear={clearAiConversation}
+      />
     </main>
+  );
+}
+
+function AiHelper({
+  open,
+  messages,
+  input,
+  loading,
+  mode,
+  messagesRef,
+  onOpenChange,
+  onInputChange,
+  onSubmit,
+  onClear,
+}: {
+  open: boolean;
+  messages: AiMessage[];
+  input: string;
+  loading: boolean;
+  mode: "ai" | "local" | null;
+  messagesRef: React.RefObject<HTMLDivElement | null>;
+  onOpenChange: (open: boolean) => void;
+  onInputChange: (value: string) => void;
+  onSubmit: (value?: string) => void;
+  onClear: () => void;
+}) {
+  const suggestions = [
+    "Wat moet ik vandaag doen?",
+    "Welke facturen staan open?",
+    "Hoe staat mijn cashruimte?",
+  ];
+
+  return (
+    <div className={cn("ev-ai-layer", open && "ev-ai-layer-open")}>
+      {open && (
+        <section className="ev-ai-panel" role="dialog" aria-label="EcomVault AI helper">
+          <header className="ev-ai-header">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="ev-ai-avatar"><Sparkles size={19} /></div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2 className="truncate text-base font-semibold text-[#0B0B0C]">EcomVault AI</h2>
+                  <span className={cn("ev-ai-status", mode === "ai" && "ev-ai-status-live")}>
+                    {mode === "ai" ? "AI verbonden" : mode === "local" ? "Lokaal" : "Klaar"}
+                  </span>
+                </div>
+                <p className="truncate text-xs text-neutral-500">Assistent voor je administratie</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <button type="button" className="ev-ai-icon-button" onClick={onClear} aria-label="Nieuwe AI-chat" title="Nieuwe chat">
+                <RotateCcw size={17} />
+              </button>
+              <button type="button" className="ev-ai-icon-button" onClick={() => onOpenChange(false)} aria-label="Sluit AI-helper" title="Sluiten">
+                <X size={18} />
+              </button>
+            </div>
+          </header>
+
+          <div className="ev-ai-messages" ref={messagesRef} aria-live="polite">
+            {messages.map((message) => (
+              <article key={message.id} className={cn("ev-ai-message", `ev-ai-message-${message.role}`)}>
+                {message.role === "assistant" && <span className="ev-ai-message-icon"><Bot size={15} /></span>}
+                <p>{message.content}</p>
+              </article>
+            ))}
+            {messages.length === 1 && (
+              <div className="ev-ai-suggestions">
+                {suggestions.map((suggestion) => (
+                  <button key={suggestion} type="button" onClick={() => onSubmit(suggestion)}>
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )}
+            {loading && (
+              <div className="ev-ai-thinking">
+                <LoaderCircle size={16} className="animate-spin" />
+                Antwoord voorbereiden
+              </div>
+            )}
+          </div>
+
+          <form
+            className="ev-ai-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSubmit();
+            }}
+          >
+            <textarea
+              value={input}
+              onChange={(event) => onInputChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  onSubmit();
+                }
+              }}
+              rows={1}
+              maxLength={2_000}
+              placeholder="Vraag iets over je administratie"
+              aria-label="Vraag aan EcomVault AI"
+            />
+            <button type="submit" disabled={!input.trim() || loading} aria-label="Verstuur vraag">
+              <Send size={18} />
+            </button>
+          </form>
+          <p className="ev-ai-disclaimer">Alleen-lezen · controleer belangrijke financiële beslissingen</p>
+        </section>
+      )}
+
+      <button
+        type="button"
+        className="ev-ai-launcher"
+        onClick={() => onOpenChange(!open)}
+        aria-label={open ? "Verberg AI-helper" : "Open AI-helper"}
+        aria-expanded={open}
+        aria-hidden={open}
+        tabIndex={open ? -1 : 0}
+      >
+        {open ? <X size={20} /> : <Sparkles size={20} />}
+        <span>{open ? "Sluiten" : "Vraag AI"}</span>
+      </button>
+    </div>
   );
 }
 
@@ -2797,13 +3150,13 @@ function Metric({
 }) {
   const content = (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
           <p className={cn("text-sm font-semibold", active ? "text-[#E8D9B8]" : "text-neutral-500")}>{title}</p>
-          <p className={cn("mt-2 text-2xl font-bold", active ? "text-white" : "text-neutral-950")}>{value}</p>
+          <p className={cn("mt-2 break-words text-2xl font-bold", active ? "text-white" : "text-neutral-950")}>{value}</p>
           <p className={cn("mt-1 text-sm", active ? "text-[#F5F2ED]/65" : "text-neutral-600")}>{detail}</p>
         </div>
-        <div className={cn("rounded-md p-2", active ? "bg-[#2D5BFF] text-white" : danger ? "bg-red-100 text-red-700" : "bg-[#2D5BFF]/10 text-[#2D5BFF]")}>
+        <div className={cn("shrink-0 rounded-md p-2", active ? "bg-[#2D5BFF] text-white" : danger ? "bg-red-100 text-red-700" : "bg-[#2D5BFF]/10 text-[#2D5BFF]")}>
           <Icon size={20} />
         </div>
       </div>
@@ -2816,7 +3169,7 @@ function Metric({
         type="button"
         onClick={onClick}
         className={cn(
-          "rounded-2xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5",
+          "min-w-0 overflow-hidden rounded-2xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5",
           active
             ? "border-[#0B0B0C] bg-[#0B0B0C]"
             : danger
