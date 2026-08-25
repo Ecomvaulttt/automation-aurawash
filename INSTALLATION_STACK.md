@@ -12,11 +12,11 @@ Open daarna `http://localhost:5173/`.
 Optioneel voor volledige EcomVault AI-antwoorden:
 
 ```text
-OPENAI_API_KEY
-OPENAI_MODEL=gpt-5.4-mini
+GROQ_API_KEY
+GROQ_MODEL=openai/gpt-oss-20b
 ```
 
-Zet deze waarden alleen server-side in `.env.local` of bij de hostingprovider. Zonder key blijft de ingebouwde lokale administratie-assistent beschikbaar.
+Maak een gratis GroqCloud-key aan en activeer Zero Data Retention voordat echte salaris- of factuurgegevens worden gebruikt. Zet de waarden alleen server-side in `.env.local` of bij de hostingprovider. Zonder key of bij een providerstoring blijft de ingebouwde lokale administratie-assistent beschikbaar.
 
 ## V1 live automation
 

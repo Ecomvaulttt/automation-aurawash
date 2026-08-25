@@ -50,7 +50,7 @@ De build maakt ook `aurawash-administratie.html`, een single-file HTML die direc
 
 ## AI-helper
 
-De chat werkt direct met lokale antwoorden over cash, facturen, loonstroken, deadlines en exports. Voor vrije AI-vragen via de OpenAI Responses API:
+De chat werkt direct met lokale antwoorden over cash, facturen, loonstroken, deadlines en exports. Voor vrije AI-vragen gebruikt het systeem de gratis Groq-tier met `openai/gpt-oss-20b`, gekozen uit [awesome-free-llm-apis](https://github.com/mnfst/awesome-free-llm-apis):
 
 ```bash
 cp .env.example .env.local
@@ -59,11 +59,13 @@ cp .env.example .env.local
 Vul daarna alleen server-side in:
 
 ```text
-OPENAI_API_KEY=...
-OPENAI_MODEL=gpt-5.4-mini
+GROQ_API_KEY=...
+GROQ_MODEL=openai/gpt-oss-20b
 ```
 
-De browser ontvangt de API-key nooit. De route `api/ai-helper.mjs` is geschikt voor een serverless deployment; zet dezelfde environment variables ook bij de hostingprovider. De single-file HTML gebruikt zonder server automatisch de lokale kennislaag.
+Maak de gratis sleutel aan via [GroqCloud](https://console.groq.com/keys). Zet voor gebruik met echte salaris- en factuurdata eerst **Zero Data Retention** aan in Groq Data Controls. De browser ontvangt de API-key nooit en alleen een begrensde administratiesamenvatting wordt verstuurd.
+
+De route `api/ai-helper.mjs` is geschikt voor een serverless deployment; zet dezelfde environment variables ook bij de hostingprovider. Wanneer de gratis limiet is bereikt of Groq niet beschikbaar is, gebruikt de app automatisch de lokale kennislaag. De single-file HTML blijft altijd lokaal werken.
 
 ## E-mail automation
 

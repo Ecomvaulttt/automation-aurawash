@@ -412,7 +412,7 @@ function localAiReply(question: string, context: AiContextSnapshot) {
     return `Dit vraagt aandacht: ${attention.map((item) => `${item.title} (${item.value})`).join("; ")}.`;
   }
 
-  return "Ik kan vragen beantwoorden over beschikbaar geld, open facturen, betalingen, loonstroken, deadlines, medewerkers en exports. Voor vrije vervolgvragen activeert de beheerder de beveiligde OpenAI-koppeling.";
+  return "Ik kan vragen beantwoorden over beschikbaar geld, open facturen, betalingen, loonstroken, deadlines, medewerkers en exports. Voor vrije vervolgvragen activeert de beheerder de gratis Groq-koppeling.";
 }
 
 function buildReminders(
@@ -3072,7 +3072,7 @@ function AiHelper({
                 <div className="flex items-center gap-2">
                   <h2 className="truncate text-base font-semibold text-[#0B0B0C]">EcomVault AI</h2>
                   <span className={cn("ev-ai-status", mode === "ai" && "ev-ai-status-live")}>
-                    {mode === "ai" ? "AI verbonden" : mode === "local" ? "Lokaal" : "Klaar"}
+                    {mode === "ai" ? "Groq Free" : mode === "local" ? "Lokaal" : "Klaar"}
                   </span>
                 </div>
                 <p className="truncate text-xs text-neutral-500">Assistent voor je administratie</p>

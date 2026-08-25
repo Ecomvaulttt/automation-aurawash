@@ -16,8 +16,8 @@ export default defineConfig(({ mode }) => {
         configureServer(server) {
           server.middlewares.use("/api/ai-helper", (request, response) => {
             void handleAiHelperRequest(request, response, {
-              apiKey: env.OPENAI_API_KEY,
-              model: env.OPENAI_MODEL,
+              apiKey: env.GROQ_API_KEY,
+              model: env.GROQ_MODEL,
             });
           });
         },
