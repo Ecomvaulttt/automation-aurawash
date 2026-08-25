@@ -65,6 +65,7 @@ function localAnswer(question, context) {
   const financial = context?.financial || {};
   const counts = context?.counts || {};
   const reminders = Array.isArray(context?.reminders) ? context.reminders : [];
+  const checks = Array.isArray(context?.checks) ? context.checks : [];
 
   if (/cash|geld|ruimte|beschikbaar/.test(normalized)) {
     return `Er is ${formatEuro(financial.available)} beschikbaar. Na salarissen, belastingen, open facturen en vaste lasten is de berekende cashruimte ${formatEuro(financial.cashCoverage)}.`;
@@ -88,7 +89,13 @@ function localAnswer(question, context) {
     return "Open Instanties voor het volledige gegevenspakket of gebruik Export rechtsboven. Daar staan de losse CSV-bestanden en het boekhouderpakket.";
   }
 
-  return "Ik kan vragen beantwoorden over beschikbaar geld, open facturen, betalingen, loonstroken, deadlines, medewerkers en exports. Voor een volledig vrij AI-antwoord moet de beheerder de server-side OpenAI-koppeling activeren.";
+  if (/mist|ontbre|controle|risico|compleet|kwaliteit/.test(normalized)) {
+    const attention = checks.filter((item) => item?.tone !== "good");
+    if (!attention.length) return "Alle automatische controles staan op groen. Er zijn nu geen ontbrekende onderdelen gevonden.";
+    return `Dit vraagt aandacht: ${attention.map((item) => `${item.title} (${item.value})`).join("; ")}.`;
+  }
+
+  return "Ik kan vragen beantwoorden over beschikbaar geld, open facturen, betalingen, loonstroken, deadlines, ontbrekende gegevens, medewerkers en exports. Voor een volledig vrij AI-antwoord moet de beheerder de server-side OpenAI-koppeling activeren.";
 }
 
 async function createOpenAiAnswer({ apiKey, model, messages, context }) {

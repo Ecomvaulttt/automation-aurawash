@@ -27,6 +27,8 @@ AuraWash/B&T is de eerste demo-tenant.
 - Branded factuur HTML export per klant.
 - Boekhouderpakket HTML export met kosten, cashflow, activa/passiva indicatie en bewijsstukken.
 - Ingebouwde EcomVault AI-helper met actuele administratiecontext en lokale fallback.
+- Automatisch controlecentrum voor achterstallige posten, ontbrekende vervaldatums, bewijsstukken, loondossiers en dubbele factuurnummers.
+- Cash-stresstest met de verwachte eindpositie nadat alle open ontvangsten zijn meegenomen.
 - Lokale wijzigingen blijven bewaard in `localStorage`.
 
 ## Starten

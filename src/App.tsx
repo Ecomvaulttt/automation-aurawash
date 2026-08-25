@@ -8,6 +8,7 @@ import {
   Building2,
   CalendarClock,
   CheckCircle2,
+  ChevronRight,
   ClipboardList,
   CreditCard,
   Download,
@@ -176,6 +177,24 @@ type AiContextSnapshot = {
   openPayables: Array<Record<string, string | number>>;
   openReceivables: Array<Record<string, string | number>>;
   employees: Array<Record<string, string | number>>;
+  checks: Array<{
+    title: string;
+    detail: string;
+    value: string;
+    tone: OverviewCheckTone;
+  }>;
+};
+
+type OverviewCheckTone = "danger" | "warn" | "good";
+
+type OverviewCheck = {
+  id: string;
+  title: string;
+  detail: string;
+  value: string;
+  tone: OverviewCheckTone;
+  icon: typeof Banknote;
+  target: Tab;
 };
 
 const dateRangePresets: Array<{ key: DateRangePreset; label: string }> = [
@@ -385,6 +404,12 @@ function localAiReply(question: string, context: AiContextSnapshot) {
 
   if (/export|boekhouder|instantie/.test(normalized)) {
     return "Open Instanties voor het volledige gegevenspakket of gebruik Export rechtsboven. Daar staan de losse CSV-bestanden en het boekhouderpakket.";
+  }
+
+  if (/mist|ontbre|controle|risico|compleet|kwaliteit/.test(normalized)) {
+    const attention = context.checks.filter((item) => item.tone !== "good");
+    if (!attention.length) return "Alle automatische controles staan op groen. Er zijn nu geen ontbrekende onderdelen gevonden.";
+    return `Dit vraagt aandacht: ${attention.map((item) => `${item.title} (${item.value})`).join("; ")}.`;
   }
 
   return "Ik kan vragen beantwoorden over beschikbaar geld, open facturen, betalingen, loonstroken, deadlines, medewerkers en exports. Voor vrije vervolgvragen activeert de beheerder de beveiligde OpenAI-koppeling.";
@@ -702,6 +727,10 @@ function App() {
     displayTotals.openTaxes -
     displayTotals.openPayables -
     displayTotals.fixedOpen;
+  const totalCashCoverage =
+    totals.cash - totals.salary - totals.openTaxes - totals.openPayables - totals.fixedOpen;
+  const cashAfterReceivables = totalCashCoverage + totals.expectedReceivables;
+  const remainingCashGap = Math.max(0, -cashAfterReceivables);
 
   const selectedDoc = invoiceDocs.find((doc) => doc.id === selectedDocId) ?? invoiceDocs[0];
   const linkedDocumentCount = invoiceDocs.filter((doc) => doc.linkedInvoice).length;
@@ -717,6 +746,106 @@ function App() {
     : 0;
   const systemScore = Math.round((onboardingProgress + payrollCompletion + proofCoverage) / 3);
   const nextReminder = reminders[0];
+  const openPayableItems = payables.filter((item) => isPaidNo(item.paid));
+  const openReceivableItems = receivables.filter((item) => isPaidNo(item.paid));
+  const documentByInvoice = new Map(
+    invoiceDocs
+      .filter((doc) => doc.linkedInvoice || doc.invoiceNumber)
+      .map((doc) => [doc.linkedInvoice || doc.invoiceNumber, doc]),
+  );
+  const evidenceInvoiceNumbers = new Set(documentByInvoice.keys());
+  const overduePayables = openPayableItems.filter((item) => {
+    const deadline = parseIsoDate(item.deadline);
+    return deadline ? deadline < (parseIsoDate(today) as Date) : /geweest|oud|direct|zo snel mogelijk/i.test(item.deadline);
+  });
+  const overdueReceivables = openReceivableItems.filter((item) => {
+    const dueDate = item.dueDate || documentByInvoice.get(item.invoice)?.dueDate || "";
+    const parsed = parseIsoDate(dueDate);
+    return parsed ? parsed < (parseIsoDate(today) as Date) : false;
+  });
+  const missingDeadlineCount =
+    openPayableItems.filter((item) => !parseIsoDate(item.deadline)).length +
+    openReceivableItems.filter((item) => {
+      const dueDate = item.dueDate || documentByInvoice.get(item.invoice)?.dueDate || "";
+      return !parseIsoDate(dueDate);
+    }).length;
+  const missingEvidenceCount =
+    openPayableItems.filter((item) => !item.documentIds?.length && !evidenceInvoiceNumbers.has(item.invoice)).length +
+    openReceivableItems.filter((item) => !item.documentIds?.length && !evidenceInvoiceNumbers.has(item.invoice)).length;
+  const missingPayrollCount = activeSalaries.filter(
+    (salary) => !payrollDocs.some((doc) => doc.employee === salary.name),
+  ).length;
+  const invoiceKeys = [
+    ...payables.map((item) => `payable:${item.company.toLowerCase()}:${item.invoice.toLowerCase()}`),
+    ...receivables.map((item) => `receivable:${item.client.toLowerCase()}:${item.invoice.toLowerCase()}`),
+  ];
+  const duplicateInvoiceCount = invoiceKeys.length - new Set(invoiceKeys).size;
+  const overdueAmount = sum([
+    ...overduePayables.map((item) => item.amount),
+    ...overdueReceivables.map((item) => item.amount),
+  ]);
+  const lastBankUploadDate = parseIsoDate(clientProfile.lastBankUpload.split("·")[0]?.trim() || "");
+  const bankDataAge = lastBankUploadDate
+    ? Math.max(0, Math.floor(((parseIsoDate(today) as Date).getTime() - lastBankUploadDate.getTime()) / 86_400_000))
+    : null;
+  const bankDataNeedsRefresh = bankDataAge === null || bankDataAge > 30;
+  const overviewChecks: OverviewCheck[] = [
+    {
+      id: "bank-freshness",
+      title: "Banksaldo verversen",
+      detail: "Actuele bankdata voorkomt beslissingen op een verouderd beschikbaar bedrag.",
+      value: bankDataAge === null ? "Nog niet geüpload" : bankDataAge === 0 ? "Vandaag bijgewerkt" : `${bankDataAge} dagen oud`,
+      tone: bankDataNeedsRefresh ? "warn" : "good",
+      icon: Landmark,
+      target: "onboarding",
+    },
+    {
+      id: "overdue",
+      title: "Achterstallige posten",
+      detail: "Betaal- en ontvangstdatums die al verstreken zijn.",
+      value: `${overduePayables.length + overdueReceivables.length} · ${euro.format(overdueAmount)}`,
+      tone: overduePayables.length + overdueReceivables.length ? "danger" : "good",
+      icon: CalendarClock,
+      target: "facturen",
+    },
+    {
+      id: "deadlines",
+      title: "Vervaldatums aanvullen",
+      detail: "Zonder exacte datum werken reminders en klantmails niet betrouwbaar.",
+      value: `${missingDeadlineCount} ontbrekend`,
+      tone: missingDeadlineCount ? "warn" : "good",
+      icon: TimerReset,
+      target: "facturen",
+    },
+    {
+      id: "evidence",
+      title: "Bewijsstukken koppelen",
+      detail: "Open posten zonder gekoppelde PDF of documentrecord.",
+      value: `${missingEvidenceCount} zonder bewijs`,
+      tone: missingEvidenceCount ? "warn" : "good",
+      icon: FileCheck2,
+      target: "automation",
+    },
+    {
+      id: "payroll",
+      title: "Loondossier completeren",
+      detail: "Actieve medewerkers zonder loonstrook in het dossier.",
+      value: `${missingPayrollCount} medewerkers`,
+      tone: missingPayrollCount ? "warn" : "good",
+      icon: ReceiptText,
+      target: "loonstroken",
+    },
+    {
+      id: "duplicates",
+      title: "Dubbele factuurnummers",
+      detail: "Controle op dezelfde relatie en hetzelfde factuurnummer.",
+      value: duplicateInvoiceCount ? `${duplicateInvoiceCount} gevonden` : "Geen gevonden",
+      tone: duplicateInvoiceCount ? "danger" : "good",
+      icon: duplicateInvoiceCount ? XCircle : CheckCircle2,
+      target: "facturen",
+    },
+  ];
+  const overviewIssueCount = overviewChecks.filter((item) => item.tone !== "good").length;
   const aiContext: AiContextSnapshot = {
     companyName: clientProfile.companyName,
     currentView: tab,
@@ -771,6 +900,7 @@ function App() {
       status: salary.status || "Actief",
       payrollDocuments: payrollDocs.filter((doc) => doc.employee === salary.name).length,
     })),
+    checks: overviewChecks.map(({ title, detail, value, tone }) => ({ title, detail, value, tone })),
   };
 
   const payrollMonths = Array.from(new Set(payrollDocs.map((doc) => doc.period))).filter(Boolean);
@@ -1716,15 +1846,13 @@ function App() {
                 </div>
               </Card>
 
-              <Card className="overflow-hidden bg-[#0B0B0C] text-[#F5F2ED]">
-                <SectionHeader title="Management snapshot" note="Wat moet aandacht krijgen" dark />
-                <div className="grid gap-3 p-5">
-                  <Preview dark label="Cash na verplichtingen" value={euro.format(cashCoverage)} />
-                  <Preview dark label="Deadline alerts" value={`${reminders.length} open acties`} />
-                  <Preview dark label="Documentdekking" value={`${linkedDocumentCount}/${invoiceDocs.length} gekoppeld`} />
-                  <Preview dark label="Payroll controle" value={`${payrollCompletion}% compleet`} />
-                </div>
-              </Card>
+              <OverviewControlCenter
+                checks={overviewChecks}
+                issueCount={overviewIssueCount}
+                cashAfterReceivables={cashAfterReceivables}
+                remainingCashGap={remainingCashGap}
+                onNavigate={setTab}
+              />
             </section>
 
             <section className="grid gap-5 xl:grid-cols-[0.8fr_1fr]">
@@ -2929,6 +3057,7 @@ function AiHelper({
   const suggestions = [
     "Wat moet ik vandaag doen?",
     "Welke facturen staan open?",
+    "Wat mist er in mijn administratie?",
     "Hoe staat mijn cashruimte?",
   ];
 
@@ -3025,6 +3154,67 @@ function AiHelper({
         <span>{open ? "Sluiten" : "Vraag AI"}</span>
       </button>
     </div>
+  );
+}
+
+function OverviewControlCenter({
+  checks,
+  issueCount,
+  cashAfterReceivables,
+  remainingCashGap,
+  onNavigate,
+}: {
+  checks: OverviewCheck[];
+  issueCount: number;
+  cashAfterReceivables: number;
+  remainingCashGap: number;
+  onNavigate: (tab: Tab) => void;
+}) {
+  return (
+    <Card className="ev-control-center overflow-hidden">
+      <SectionHeader
+        title="Controlecentrum"
+        note={issueCount ? `${issueCount} controles vragen aandacht` : "Alle controles staan op groen"}
+      />
+      <div className={cn("ev-control-cash", cashAfterReceivables < 0 && "ev-control-cash-danger")}>
+        <div>
+          <p>Verwachte eindpositie</p>
+          <span>Volledig open dossier, los van de gekozen grafiekperiode</span>
+        </div>
+        <div className="text-right">
+          <strong>{euro.format(cashAfterReceivables)}</strong>
+          <span>
+            {remainingCashGap
+              ? `Nog ${euro.format(remainingCashGap)} tekort`
+              : "Verplichtingen volledig gedekt"}
+          </span>
+        </div>
+      </div>
+      <div className="ev-control-list">
+        {checks.map((check) => {
+          const Icon = check.icon;
+          return (
+            <button
+              key={check.id}
+              type="button"
+              className="ev-control-row"
+              onClick={() => onNavigate(check.target)}
+              aria-label={`${check.title}: ${check.value}. Open ${check.target}`}
+            >
+              <span className={cn("ev-control-icon", `ev-control-icon-${check.tone}`)}>
+                <Icon size={17} />
+              </span>
+              <span className="ev-control-copy">
+                <strong>{check.title}</strong>
+                <small>{check.detail}</small>
+              </span>
+              <span className={cn("ev-control-value", `ev-control-value-${check.tone}`)}>{check.value}</span>
+              <ChevronRight className="ev-control-chevron" size={17} />
+            </button>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
 
