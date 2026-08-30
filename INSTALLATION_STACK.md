@@ -18,47 +18,40 @@ GROQ_MODEL=openai/gpt-oss-20b
 
 Maak een gratis GroqCloud-key aan en activeer Zero Data Retention voordat echte salaris- of factuurgegevens worden gebruikt. Zet de waarden alleen server-side in `.env.local` of bij de hostingprovider. Zonder key of bij een providerstoring blijft de ingebouwde lokale administratie-assistent beschikbaar.
 
-## V1 live automation
+## Live platform
 
 Benodigd per klant:
 
-- Administratie inbox met IMAP toegang.
-- SMTP account voor uitgaande klantmails.
-- Slack Incoming Webhook voor het administratiekanaal.
-- CSV/XLS bankexport van de laatste 30 dagen.
+- Google Workspace of Microsoft 365 OAuth-app.
+- Slack OAuth-app met incoming webhook.
+- CSV/XLSX bankexport van de laatste 30 dagen.
 - Logo, bedrijfsnaam, contactpersoon en boekhouder e-mail.
 
-GitHub Secrets:
+Hosting secrets:
 
 ```text
-IMAP_HOST
-IMAP_PORT
-IMAP_USER
-IMAP_PASS
-IMAP_MAILBOX
-SLACK_WEBHOOK_URL
-SMTP_HOST
-SMTP_PORT
-SMTP_USER
-SMTP_PASS
-SMTP_FROM
-EMAIL_REPLY_TO
 VITE_SUPABASE_URL
+VITE_SUPABASE_PUBLISHABLE_KEY
 SUPABASE_SERVICE_ROLE_KEY
+APP_URL
+TOKEN_ENCRYPTION_KEY
+CRON_SECRET
+GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET
+MICROSOFT_CLIENT_ID
+MICROSOFT_CLIENT_SECRET
+SLACK_CLIENT_ID
+SLACK_CLIENT_SECRET
 ```
 
-GitHub Variables:
+Optionele GitHub-trigger secrets:
 
 ```text
-INBOX_SINCE_DAYS=45
-PAYABLE_REMINDER_DAYS=5
-RECEIVABLE_REMINDER_DAYS=3
-AUTO_SEND_CUSTOMER_EMAILS=false
-ORGANIZATION_ID=
-LOCATION_ID=
+APP_URL
+CRON_SECRET
 ```
 
-Belangrijk: zet `AUTO_SEND_CUSTOMER_EMAILS` pas op `true` nadat klantmailadressen, factuurdata en templates gecontroleerd zijn.
+Belangrijk: automatische klantmail staat per organisatie standaard uit. Zet dit pas in de app aan nadat adressen, factuurdata en template gecontroleerd zijn.
 
 ## GitHub toegang
 
@@ -73,14 +66,16 @@ Aanwezig in de repo:
 - Private Storage bucket voor bewijsstukken.
 - Rollen voor platformbeheer, eigenaar, manager, boekhouder en medewerker.
 - Admin API voor uitnodigen, rollen/status wijzigen en toegang intrekken.
-- Auditlog voor beheeracties.
+- Auditlog voor beheer- en financiële statusacties.
 - OAuth-flow voor Google Workspace, Microsoft 365 en Slack.
 - Versleutelde tokenopslag buiten de browser.
-- Herhaalbaar bootstrap-commando per nieuwe klant.
+- Herhaalbaar bootstrap-commando en gecontroleerde livegang per nieuwe klant.
+- Dagelijkse provider-sync via Vercel Cron en beveiligde GitHub-trigger.
+- PDF-facturen en ZIP-boekhouderpakket met bewijsstukken.
 
 Benodigde platformvariabelen staan als lege namen in `.env.example`. Plaats waarden alleen in `.env.local` en bij de hostingprovider.
 
-Volg voor AuraWash of een volgende klant `docs/AURAWASH_PILOT_ACTIVATION.md`.
+Volg voor AuraWash of een volgende klant `docs/PLUG_AND_PLAY.md`.
 
 ## Later uitbreiden
 

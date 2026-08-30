@@ -1,0 +1,21 @@
+name: Platform automation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 7 * * *"
+
+jobs:
+  trigger-secure-platform-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger tenant automation
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$APP_URL"
+          test -n "$CRON_SECRET"
+          curl --fail-with-body --retry 2 --max-time 310 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/automation/run"

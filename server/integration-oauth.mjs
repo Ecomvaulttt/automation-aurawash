@@ -7,7 +7,7 @@ const providerSettings = {
     clientSecret: "GOOGLE_CLIENT_SECRET",
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
-    scopes: ["openid", "email", "https://www.googleapis.com/auth/gmail.readonly"],
+    scopes: ["openid", "email", "https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"],
   },
   microsoft: {
     label: "Microsoft 365",
@@ -15,7 +15,7 @@ const providerSettings = {
     clientSecret: "MICROSOFT_CLIENT_SECRET",
     authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
     tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-    scopes: ["openid", "email", "offline_access", "User.Read", "Mail.Read"],
+    scopes: ["openid", "email", "offline_access", "User.Read", "Mail.Read", "Mail.Send"],
   },
   slack: {
     label: "Slack",
@@ -121,5 +121,36 @@ export async function exchangeAuthorizationCode(provider, code) {
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload || payload.error || payload.ok === false || !payload.access_token) throw new Error("Token exchange failed");
-  return payload;
+  return { ...payload, stored_at: Date.now() };
+}
+
+export async function refreshAuthorizationToken(provider, payload) {
+  if (provider === "slack" || !payload?.refresh_token) return payload;
+  const config = providerConfig(provider);
+  const body = new URLSearchParams({
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
+    refresh_token: payload.refresh_token,
+    grant_type: "refresh_token",
+  });
+  if (provider === "microsoft") body.set("scope", config.scopes.join(" "));
+  const response = await fetch(config.tokenUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  const next = await response.json().catch(() => null);
+  if (!response.ok || !next?.access_token) throw new Error("Token refresh failed");
+  return {
+    ...payload,
+    ...next,
+    refresh_token: next.refresh_token || payload.refresh_token,
+    stored_at: Date.now(),
+  };
+}
+
+export function tokenNeedsRefresh(payload, now = Date.now()) {
+  const storedAt = Number(payload?.stored_at || 0);
+  const expiresIn = Number(payload?.expires_in || 0) * 1000;
+  return Boolean(payload?.refresh_token && expiresIn && (!storedAt || now >= storedAt + expiresIn - 60_000));
 }

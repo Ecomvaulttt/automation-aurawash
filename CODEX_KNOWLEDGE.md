@@ -16,7 +16,7 @@ Dit bestand is bedoeld als directe context voor elke nieuwe Codex-agent die aan 
 Maak en onderhoud een plug-and-play finance operations cockpit voor autodetailers, carwash/detailing shops en servicebedrijven. AuraWash/B&T is de eerste demo-tenant.
 
 - Klant-onboarding met bedrijfsnaam, logo, sector, boekhouder, Slack kanaal en administratie e-mail.
-- Veilige bankflow via CSV/XLS upload van de laatste 30 dagen.
+- Veilige bankflow via CSV/XLSX upload van de laatste 30 dagen.
 - Beschikbaar geld beheren.
 - Klikbare KPI's met maand/kwartaal/jaar grafiek.
 - Mini-agenda/preset periodekeuze voor overzichtcijfers: vandaag, gister, laatste 7/30/90/365 dagen, deze maand, kwartaal, halfjaar, jaar, totaal en custom start/einddatum.
@@ -44,10 +44,11 @@ Maak en onderhoud een plug-and-play finance operations cockpit voor autodetailer
 - shadcn-style lokale componenten in `src/components/ui`
 - Lucide icons
 - Data start in `src/data.ts`
-- Lokale gebruikerswijzigingen blijven bewaard in `localStorage`
-- E-mail automation via GitHub Actions + `nodemailer`
-- Inbox automation via IMAP + `imapflow`
-- Slack reminders via `SLACK_WEBHOOK_URL`
+- Supabase Auth, Postgres RLS en private Storage voor productie
+- Alleen onschuldige UI-voorkeuren blijven in productie in `localStorage`
+- Google/Microsoft/Slack OAuth met versleutelde tokens
+- Dagelijkse platformautomation via Vercel Cron of beveiligde GitHub-trigger
+- Legacy IMAP/SMTP-runner blijft beschikbaar als fallback
 
 ## Commands
 
@@ -76,7 +77,7 @@ Repo:
 https://github.com/Ecomvaulttt/automation-aurawash
 ```
 
-Repo moet private blijven, omdat er loon- en financiele gegevens in staan.
+De repo is openbaar als installeerbare productcode. Echte loondata, documenten, tokens en automation-output mogen nooit worden gecommit.
 
 ## Belangrijkste bestanden
 
@@ -86,7 +87,8 @@ Repo moet private blijven, omdat er loon- en financiele gegevens in staan.
 - `src/components/ui/*`: lokale shadcn-style primitives.
 - `scripts/make-single-html.mjs`: maakt single-file HTML.
 - `scripts/send-email.mjs`: verstuurt workflow e-mail via SMTP-secrets.
-- `scripts/sync-inbox.mjs`: haalt factuur/loonstrook PDF's uit inbox en schrijft documentdata.
+- `server/platform-automation.mjs`: OAuth-inboxsync, tokenrefresh, Slack en klantmail.
+- `scripts/sync-inbox.mjs`: legacy IMAP-fallback.
 - `scripts/run-reminders.mjs`: stuurt Slack reminders en optionele klantmail.
 - `automation/README.md`: setup voor inbox, Slack en klantmail automation.
 - `automation/config.example.json`: voorbeeldregels voor automation.
@@ -160,7 +162,7 @@ De app moet minimaal dit ondersteunen:
 - Automation tab openen.
 - Gmail/IMAP zoekregel aanpassen.
 - Slack kanaal/reminderdagen aanpassen.
-- Document uploaden voor factuur, vaste last of loonstrook.
+- Document uploaden voor factuur, vaste last of loonstrook naar private Storage.
 - Bij factuur op `Bekijk` klikken om gekoppelde data/PDF te zien.
 - Documentdata handmatig corrigeren.
 

@@ -36,6 +36,7 @@ type TeamMember = {
 
 type Location = { id: string; name: string; code: string; active: boolean };
 type Connector = { id: string; label: string; detail: string; status: ConnectorStatus; icon: typeof Mail };
+type AuditEvent = { id: string; action: string; entity_type: string; reason: string | null; created_at: string; actor?: { full_name?: string; email?: string } | null };
 
 const defaultMembers: TeamMember[] = [
   { id: "member-owner", name: "Ramzi", email: "administratie@aurawash.nl", role: "owner", status: "active" },
@@ -76,7 +77,7 @@ function connectorLabel(status: ConnectorStatus) {
   return "Niet verbonden";
 }
 
-export function PlatformAdminCenter({ onOpenSetup }: { onOpenSetup: () => void }) {
+export function PlatformAdminCenter({ onOpenSetup, bankImported }: { onOpenSetup: () => void; bankImported: boolean }) {
   const auth = useAuth();
   const { activeWorkspace } = useWorkspace();
   const memberKey = `ecomvault:members:${activeWorkspace.organizationId}:v1`;
@@ -98,6 +99,9 @@ export function PlatformAdminCenter({ onOpenSetup }: { onOpenSetup: () => void }
   const [connectorFeedback, setConnectorFeedback] = useState("");
   const [pendingRemoval, setPendingRemoval] = useState<TeamMember | null>(null);
   const [removalReason, setRemovalReason] = useState("");
+  const [pendingLocationRemoval, setPendingLocationRemoval] = useState<Location | null>(null);
+  const [locationRemovalReason, setLocationRemovalReason] = useState("");
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
 
   const securityReady = auth.mode === "demo" || auth.assuranceLevel === "aal2";
   const connectedCount = connectors.filter((connector) => connector.status === "connected").length;
@@ -126,8 +130,15 @@ export function PlatformAdminCenter({ onOpenSetup }: { onOpenSetup: () => void }
   useEffect(() => {
     if (auth.mode !== "production" || !auth.session) return;
     void loadMembers();
+    void loadLocations();
     void loadConnectors();
+    void loadAudit();
   }, [activeWorkspace.organizationId, auth.mode, auth.session?.access_token]);
+
+  useEffect(() => {
+    if (!bankImported) return;
+    setConnectors((current) => current.map((connector) => connector.id === "bank" ? { ...connector, status: "connected" } : connector));
+  }, [bankImported]);
 
   async function loadMembers() {
     if (!auth.session) return;
@@ -167,6 +178,24 @@ export function PlatformAdminCenter({ onOpenSetup }: { onOpenSetup: () => void }
       const live = payload.integrations.find((item: Record<string, unknown>) => item.provider === connector.id);
       return live ? { ...connector, status: live.status as ConnectorStatus } : connector;
     }));
+  }
+
+  async function loadLocations() {
+    if (!auth.session) return;
+    const response = await fetch(`/api/admin/locations?organizationId=${encodeURIComponent(activeWorkspace.organizationId)}`, {
+      headers: { Authorization: `Bearer ${auth.session.access_token}` },
+    });
+    const payload = await response.json().catch(() => null);
+    if (response.ok && Array.isArray(payload?.locations)) setLocations(payload.locations);
+  }
+
+  async function loadAudit() {
+    if (!auth.session) return;
+    const response = await fetch(`/api/admin/audit?organizationId=${encodeURIComponent(activeWorkspace.organizationId)}`, {
+      headers: { Authorization: `Bearer ${auth.session.access_token}` },
+    });
+    const payload = await response.json().catch(() => null);
+    if (response.ok && Array.isArray(payload?.events)) setAuditEvents(payload.events);
   }
 
   function persist<T>(key: string, value: T) {
@@ -264,14 +293,39 @@ export function PlatformAdminCenter({ onOpenSetup }: { onOpenSetup: () => void }
     setBusy(false);
   }
 
-  function addLocation(event: FormEvent) {
+  async function addLocation(event: FormEvent) {
     event.preventDefault();
     if (!locationName.trim()) return;
     const code = locationName.trim().slice(0, 3).toUpperCase();
+    if (auth.mode === "production" && auth.session) {
+      setBusy(true);
+      const response = await fetch("/api/admin/locations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.session.access_token}` },
+        body: JSON.stringify({ organizationId: activeWorkspace.organizationId, name: locationName.trim(), code }),
+      });
+      if (response.ok) {
+        setLocationName("");
+        setAccountFeedback("Vestiging toegevoegd en vastgelegd.");
+        await Promise.all([loadLocations(), loadAudit()]);
+      } else setAccountFeedback("Vestiging kon niet worden toegevoegd.");
+      setBusy(false);
+      return;
+    }
     const next = [...locations, { id: crypto.randomUUID(), name: locationName.trim(), code, active: true }];
     setLocations(next);
     persist(locationKey, next);
     setLocationName("");
+  }
+
+  function requestRemoveLocation(location: Location) {
+    if (locations.length <= 1) return;
+    if (auth.mode === "production") {
+      setPendingLocationRemoval(location);
+      setLocationRemovalReason("");
+      return;
+    }
+    removeLocation(location.id);
   }
 
   function removeLocation(id: string) {
@@ -279,6 +333,27 @@ export function PlatformAdminCenter({ onOpenSetup }: { onOpenSetup: () => void }
     const next = locations.filter((location) => location.id !== id);
     setLocations(next);
     persist(locationKey, next);
+  }
+
+  async function confirmRemoveLocation() {
+    if (!pendingLocationRemoval || !auth.session || locationRemovalReason.trim().length < 5) return;
+    setBusy(true);
+    const response = await fetch("/api/admin/locations", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.session.access_token}` },
+      body: JSON.stringify({
+        organizationId: activeWorkspace.organizationId,
+        locationId: pendingLocationRemoval.id,
+        reason: locationRemovalReason,
+      }),
+    });
+    if (response.ok) {
+      setPendingLocationRemoval(null);
+      setLocationRemovalReason("");
+      setAccountFeedback("Vestiging gedeactiveerd; historie blijft bewaard.");
+      await Promise.all([loadLocations(), loadAudit()]);
+    } else setAccountFeedback("Vestiging kon niet worden gedeactiveerd.");
+    setBusy(false);
   }
 
   async function toggleConnector(id: string) {
@@ -313,6 +388,28 @@ export function PlatformAdminCenter({ onOpenSetup }: { onOpenSetup: () => void }
       : connector);
     setConnectors(next);
     persist(connectorKey, next.map(({ id: connectorId, status }) => ({ id: connectorId, status })));
+  }
+
+  async function launchWorkspace() {
+    if (auth.mode === "demo") {
+      setAccountFeedback("Demo-startcheck compleet. In live modus wordt dit als gecontroleerde livegang vastgelegd.");
+      return;
+    }
+    if (!auth.session) return;
+    setBusy(true);
+    const response = await fetch("/api/admin/launch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.session.access_token}` },
+      body: JSON.stringify({ organizationId: activeWorkspace.organizationId }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (response.ok) {
+      setAccountFeedback("Werkruimte is live gezet en de livegang staat in de auditlog.");
+      await loadAudit();
+    } else if (Array.isArray(payload?.blockers)) {
+      setAccountFeedback(`Nog afronden: ${payload.blockers.join(", ")}.`);
+    } else setAccountFeedback("Livegang kon niet worden afgerond.");
+    setBusy(false);
   }
 
   return (
@@ -358,6 +455,12 @@ export function PlatformAdminCenter({ onOpenSetup }: { onOpenSetup: () => void }
             );
           })}
         </div>
+        <div className="ev-admin-inline-form">
+          <Button variant={setupScore === 100 ? "accent" : "secondary"} disabled={busy} onClick={setupScore === 100 ? () => void launchWorkspace() : onOpenSetup}>
+            {setupScore === 100 ? <ShieldCheck size={17} /> : <ChevronRight size={17} />}
+            {setupScore === 100 ? "Gecontroleerd live zetten" : `Volgende stap: ${nextStep.label}`}
+          </Button>
+        </div>
       </Card>
 
       <Card className="ev-admin-section">
@@ -370,7 +473,7 @@ export function PlatformAdminCenter({ onOpenSetup }: { onOpenSetup: () => void }
             <div className="ev-admin-row" key={location.id}>
               <span className="ev-admin-row-icon"><Building2 size={18} /></span>
               <div><strong>{location.name}</strong><small>{location.code} · {location.active ? "Actief" : "Inactief"}</small></div>
-              <Button variant="ghost" size="icon" aria-label={`${location.name} verwijderen`} disabled={locations.length <= 1} onClick={() => removeLocation(location.id)}><Trash2 size={17} /></Button>
+              <Button variant="ghost" size="icon" aria-label={`${location.name} verwijderen`} disabled={locations.length <= 1 || busy} onClick={() => requestRemoveLocation(location)}><Trash2 size={17} /></Button>
             </div>
           ))}
         </div>
@@ -467,6 +570,28 @@ export function PlatformAdminCenter({ onOpenSetup }: { onOpenSetup: () => void }
         </ul>
       </Card>
 
+      <Card className="ev-admin-section ev-admin-wide">
+        <div className="ev-admin-section-head">
+          <div><span>Controle</span><h3>Recente auditlog</h3></div>
+          <ShieldCheck size={19} />
+        </div>
+        <div className="ev-admin-rows">
+          {(auth.mode === "demo" ? [
+            { id: "demo-audit", action: "workspace.demo_ready", entity_type: "workspace", reason: null, created_at: new Date().toISOString(), actor: { full_name: "EcomVault" } },
+          ] : auditEvents).map((event) => (
+            <div className="ev-admin-row" key={event.id}>
+              <span className="ev-admin-row-icon"><Check size={17} /></span>
+              <div>
+                <strong>{event.action.replaceAll(".", " · ")}</strong>
+                <small>{event.actor?.full_name || event.actor?.email || "Systeem"} · {new Date(event.created_at).toLocaleString("nl-NL")}{event.reason ? ` · ${event.reason}` : ""}</small>
+              </div>
+              <Badge tone="neutral">{event.entity_type}</Badge>
+            </div>
+          ))}
+          {auth.mode === "production" && !auditEvents.length && <p className="ev-admin-feedback">Nog geen auditgebeurtenissen.</p>}
+        </div>
+      </Card>
+
       {pendingRemoval && (
         <div className="ev-admin-modal-layer" role="presentation">
           <section className="ev-admin-modal" role="dialog" aria-modal="true" aria-labelledby="remove-user-title">
@@ -478,6 +603,22 @@ export function PlatformAdminCenter({ onOpenSetup }: { onOpenSetup: () => void }
             <div className="ev-admin-modal-actions">
               <Button variant="secondary" onClick={() => setPendingRemoval(null)}>Annuleren</Button>
               <Button variant="danger" disabled={busy || removalReason.trim().length < 5} onClick={() => void confirmRemoveMember()}><Trash2 size={17} /> Toegang intrekken</Button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {pendingLocationRemoval && (
+        <div className="ev-admin-modal-layer" role="presentation">
+          <section className="ev-admin-modal" role="dialog" aria-modal="true" aria-labelledby="remove-location-title">
+            <div className="ev-admin-modal-icon"><CircleAlert size={21} /></div>
+            <h3 id="remove-location-title">{pendingLocationRemoval.name} deactiveren?</h3>
+            <p>De vestiging verdwijnt uit actieve werkruimtes. Historische documenten en cijfers blijven bewaard.</p>
+            <label htmlFor="location-removal-reason">Reden</label>
+            <Input id="location-removal-reason" autoFocus value={locationRemovalReason} onChange={(event) => setLocationRemovalReason(event.target.value)} placeholder="Bijvoorbeeld: vestiging gesloten" />
+            <div className="ev-admin-modal-actions">
+              <Button variant="secondary" onClick={() => setPendingLocationRemoval(null)}>Annuleren</Button>
+              <Button variant="danger" disabled={busy || locationRemovalReason.trim().length < 5} onClick={() => void confirmRemoveLocation()}><Trash2 size={17} /> Deactiveren</Button>
             </div>
           </section>
         </div>

@@ -16,9 +16,9 @@ Belofte: binnen 2-3 uur staat er een werkend systeem dat inbox, facturen, loonst
 ## Core workflow
 
 1. Klant vult bedrijfsprofiel in: naam, logo, sector, contactpersoon, boekhouder, administratie e-mail.
-2. Klant koppelt inbox via IMAP/Gmail en SMTP.
+2. Klant koppelt Google Workspace of Microsoft 365 via OAuth.
 3. Klant kiest Slack kanaal voor reminders.
-4. Klant uploadt CSV/XLS bankbestand van de laatste 30 dagen.
+4. Klant uploadt CSV/XLSX bankbestand van de laatste 30 dagen.
 5. Systeem haalt facturen, loonstroken en vaste lasten uit e-mail.
 6. Systeem toont per document: PDF, relatie, factuurnummer, bedrag, vervaldatum, betaald JA/NEE, prioriteit, status en opmerkingen.
 7. Loonstroken staan per medewerkerprofiel met maandselectie onder het profiel.
@@ -65,5 +65,4 @@ Belofte: binnen 2-3 uur staat er een werkend systeem dat inbox, facturen, loonst
 - OCR/AI extractie voor PDF-bedragen en vervaldata.
 - Klantportal met login.
 - Servicecatalogus voor prijzen per voertuigtype.
-- Directe PDF-generatie van facturen in plaats van HTML export.
-- Multi-tenant backend met database in plaats van `localStorage`.
+- Automatische transactiematching tussen bankimport en facturen.

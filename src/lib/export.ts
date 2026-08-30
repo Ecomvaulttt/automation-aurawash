@@ -7,7 +7,10 @@ const normalize = (value: ExportValue) => {
 };
 
 export function downloadFile(filename: string, content: string, type: string) {
-  const blob = new Blob([content], { type });
+  downloadBlob(filename, new Blob([content], { type }));
+}
+
+export function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

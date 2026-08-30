@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { isAdminRole, readAssuranceLevel, readBearerToken } from "./admin-authorization.mjs";
+import { readAssuranceLevel, readBearerToken } from "./admin-authorization.mjs";
 
 function requiredEnvironment(name) {
   const value = process.env[name]?.trim();
@@ -16,6 +16,10 @@ export function createServiceClient() {
 }
 
 export async function authorizeOrganizationAdmin(request, organizationId) {
+  return authorizeOrganizationRoles(request, organizationId, ["owner"]);
+}
+
+export async function authorizeOrganizationRoles(request, organizationId, allowedRoles) {
   const token = readBearerToken(request);
   if (!token) return { ok: false, status: 401, code: "missing_session" };
   if (readAssuranceLevel(token) !== "aal2") return { ok: false, status: 403, code: "mfa_required" };
@@ -45,7 +49,7 @@ export async function authorizeOrganizationAdmin(request, organizationId) {
     .is("deleted_at", null)
     .maybeSingle();
 
-  if (!membership || !isAdminRole(membership.role)) {
+  if (!membership || !allowedRoles.includes(membership.role)) {
     return { ok: false, status: 403, code: "insufficient_role" };
   }
 

@@ -998,11 +998,28 @@ select {
 
 @media (max-width: 640px) {
   .ev-command-grid {
-    grid-template-columns: 1fr;
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
   }
 
-  .ev-command-primary {
-    grid-column: span 1;
+  .ev-command-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ev-command-grid > * {
+    width: 220px;
+    min-height: 118px;
+    flex: 0 0 220px;
+    scroll-snap-align: start;
+  }
+
+  .ev-command-grid > .ev-command-primary {
+    width: 300px;
+    flex-basis: 300px;
   }
 
   .ev-control-cash {
@@ -1412,7 +1429,59 @@ table tbody tr:hover {
   }
 
   .ev-sidebar-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 2px 0 7px;
+    scrollbar-width: none;
+  }
+
+  .ev-sidebar-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ev-sidebar {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .ev-sidebar-brand {
+    border-bottom: 0;
+    padding: 1px 3px 8px;
+  }
+
+  .ev-workspace-switcher > span,
+  .ev-workspace-meta,
+  .ev-sidebar-panel,
+  .ev-sidebar-footer > .grid,
+  .ev-sidebar-footer > button {
+    display: none;
+  }
+
+  .ev-workspace-switcher {
+    gap: 0;
+  }
+
+  .ev-nav-item {
+    display: flex;
+    width: 48px;
+    min-width: 48px;
+    height: 48px;
+    flex: 0 0 48px;
+    justify-content: center;
+    padding: 6px;
+  }
+
+  .ev-nav-item > span:last-child {
+    display: none;
+  }
+
+  .ev-sidebar-footer {
+    display: block;
+  }
+
+  .ev-theme-control {
+    padding: 8px 10px;
   }
 
   .ev-topbar {

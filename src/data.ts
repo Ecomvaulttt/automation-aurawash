@@ -6,6 +6,21 @@ export type Salary = {
   status?: "Actief" | "Uit dienst";
 };
 
+export type Balance = {
+  label: string;
+  amount: number;
+};
+
+export type FixedCost = {
+  company: string;
+  monthly: number;
+  automatic: string;
+  importance: string;
+  status: string;
+  open: number;
+  note: string;
+};
+
 export type TaxItem = {
   type: string;
   amount: number;
@@ -52,6 +67,9 @@ export type PayrollDoc = {
   net: number;
   payrollNumber?: string;
   role?: string;
+  documentId?: string;
+  storagePath?: string;
+  previewUrl?: string;
 };
 
 export type InvoiceDocument = {
@@ -80,7 +98,7 @@ export type InvoiceDocument = {
   reminderLog?: string[];
 };
 
-export const balances = [
+export const balances: Balance[] = [
   { label: "AuraWash rekening", amount: 1652.38 },
   { label: "B&T Customs rekening", amount: 446.97 },
   { label: "Contant geld", amount: 3135 },
@@ -106,7 +124,7 @@ export const taxes: TaxItem[] = [
   { type: "BTW Q2 2026", amount: 10550, deadline: "-", arrangement: "NEE", priority: "Hoog", status: "niet betaald", paid: "NEE" },
 ];
 
-export const fixedCosts = [
+export const fixedCosts: FixedCost[] = [
   { company: "Nationale Nederlanden", monthly: 333.91, automatic: "JA", importance: "Hoog", status: "Actief", open: 0, note: "" },
   { company: "Vodafone", monthly: 25.41, automatic: "JA", importance: "Middel", status: "Actief", open: 0, note: "" },
   { company: "Goudse schadevzg", monthly: 411.24, automatic: "JA", importance: "Hoog", status: "Actief", open: 0, note: "" },

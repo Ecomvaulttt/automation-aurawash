@@ -17,6 +17,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY
 SUPABASE_SERVICE_ROLE_KEY
 APP_URL
 TOKEN_ENCRYPTION_KEY
+CRON_SECRET
 ```
 
 `TOKEN_ENCRYPTION_KEY` moet een willekeurige waarde van minimaal 32 tekens zijn.
@@ -78,22 +79,23 @@ SLACK_CLIENT_SECRET
 
 De klant klikt vervolgens zelf in `Admin Center > Koppelingen` op `Verbinden`. EcomVault ziet alleen status en fouten, nooit het ruwe token.
 
-## 5. Bestaande inbox-automation activeren
+## 5. Dagelijkse platformautomation activeren
 
-De huidige dagelijkse factuur- en loonstrookrunner gebruikt IMAP/SMTP via GitHub Actions. Voeg per klant de namen uit `.env.example` toe als GitHub Actions secrets en variables. Zet klantmails eerst uit:
+Vercel roept dagelijks `/api/automation/run` aan. De gekoppelde Google/Microsoft-inbox levert facturen en loonstroken; Slack ontvangt de reminders. De optionele GitHub-workflow kan dezelfde beveiligde route aanroepen met:
 
 ```text
-AUTO_SEND_CUSTOMER_EMAILS=false
+APP_URL
+CRON_SECRET
 ```
 
-Test eerst `Inbox automation` handmatig in GitHub Actions. Controleer PDF's, bedragen, factuurnummers, deadlines en klantadressen. Zet automatische klantmail pas daarna op `true`.
+Test eerst `Platform automation` handmatig in GitHub Actions. Controleer PDF's, bedragen, factuurnummers, deadlines en klantadressen. Zet automatische klantmail pas daarna in de app aan.
 
 ## 6. Bank en boekhouder
 
-1. Upload in `Setup` een CSV/XLS-bankexport van de laatste 30 dagen.
+1. Upload in `Setup` een CSV/XLSX-bankexport van de laatste 30 dagen.
 2. Controleer de herkenning en het beschikbare bedrag.
 3. Nodig de boekhouder uit met rol `Boekhouder`.
-4. Test CSV, JSON, boekhouder-HTML en bewijsdownload.
+4. Test CSV, JSON, branded PDF en het complete ZIP-boekhouderpakket.
 
 ## 7. Pilot livezetten
 
@@ -108,4 +110,4 @@ Controleer in het Admin Center dat deze onderdelen groen zijn:
 7. Reminderregels op 5 dagen te betalen en 3 dagen te ontvangen.
 8. Automatische klantmail nog uit tijdens de eerste testrun.
 
-Pas na deze controle wordt AuraWash als live pilot behandeld.
+Klik daarna op `Gecontroleerd live zetten`. De server controleert dezelfde onderdelen en legt de livegang vast in de auditlog.

@@ -1,3 +1,5 @@
+import { createClient } from "@supabase/supabase-js";
+
 const requestBuckets = new Map();
 
 function sendJson(response, status, payload) {
@@ -44,6 +46,21 @@ function safeMessages(value) {
       content: String(message?.content || "").trim().slice(0, 1_200),
     }))
     .filter((message) => message.content);
+}
+
+async function hasWorkspaceAccess(request, organizationId) {
+  if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return true;
+  const authorization = String(request.headers?.authorization ?? "");
+  const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  if (!token || !/^[0-9a-f-]{36}$/i.test(String(organizationId ?? ""))) return false;
+  const client = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data } = await client.auth.getUser(token);
+  if (!data.user) return false;
+  const { count } = await client.from("memberships").select("id", { count: "exact", head: true })
+    .eq("user_id", data.user.id).eq("organization_id", organizationId).eq("status", "active").is("deleted_at", null);
+  if ((count ?? 0) > 0) return true;
+  const { data: profile } = await client.from("profiles").select("platform_role, status").eq("id", data.user.id).is("deleted_at", null).maybeSingle();
+  return profile?.platform_role === "ecomvault_superadmin" && profile.status === "active";
 }
 
 function formatEuro(value) {
@@ -137,6 +154,10 @@ export async function handleAiHelperRequest(request, response, options = {}) {
 
   try {
     const body = await readJsonBody(request);
+    if (!(await hasWorkspaceAccess(request, body.organizationId))) {
+      sendJson(response, 401, { error: "Log opnieuw in om de AI-helper te gebruiken." });
+      return;
+    }
     const messages = safeMessages(body.messages);
     const question = messages.at(-1)?.content || "";
     if (!question) {

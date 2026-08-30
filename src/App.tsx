@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -66,10 +66,14 @@ import {
   Payable,
   Receivable,
 } from "./data";
-import { downloadFile, ExportRow, toCsv } from "./lib/export";
+import { downloadBlob, downloadFile, ExportRow, toCsv } from "./lib/export";
+import { createInvoicePdf, downloadAccountantPackage } from "./lib/accounting-export";
+import { parseAuraWorkbook, parseBankFile } from "./lib/imports";
+import { deleteWorkspaceDocument, syncWorkspaceInvoices, uploadBankStatement, uploadWorkspaceDocument } from "./lib/platform-files";
 import { cn } from "./lib/utils";
 import { PlatformAdminCenter } from "./platform/admin/PlatformAdminCenter";
 import { useAuth } from "./platform/auth/AuthProvider";
+import { platformConfig } from "./platform/config";
 import { navigationFor } from "./platform/workspace/permissions";
 import { useWorkspace } from "./platform/workspace/WorkspaceProvider";
 import { getSupabaseClient } from "./platform/supabase";
@@ -246,6 +250,8 @@ type ReminderItem = {
   action: string;
 };
 
+type OperationNotice = { tone: "good" | "warn" | "danger"; message: string };
+
 function loadStored<T>(key: string, fallback: T): T {
   try {
     const stored = window.localStorage.getItem(key);
@@ -263,13 +269,14 @@ function saveStored<T>(key: string, value: T) {
   }
 }
 
-function useStoredState<T>(key: string, fallback: T) {
-  const [value, setValue] = useState<T>(() => loadStored(key, fallback));
+function useStoredState<T>(key: string, fallback: T, allowProduction = false) {
+  const storageEnabled = platformConfig.mode === "demo" || allowProduction;
+  const [value, setValue] = useState<T>(() => storageEnabled ? loadStored(key, fallback) : fallback);
 
   function setStored(next: T | ((current: T) => T)) {
     setValue((current) => {
       const resolved = typeof next === "function" ? (next as (current: T) => T)(current) : next;
-      saveStored(key, resolved);
+      if (storageEnabled) saveStored(key, resolved);
       return resolved;
     });
   }
@@ -530,39 +537,40 @@ function escapeHtml(value: string) {
 function App() {
   const auth = useAuth();
   const { activeWorkspace, workspaces, setActiveWorkspace } = useWorkspace();
+  const demoMode = auth.mode === "demo";
   const [tab, setTab] = useState<Tab>("overzicht");
   const [query, setQuery] = useState("");
-  const [theme, setTheme] = useStoredState<ThemeMode>("ecomvault-theme", "light");
-  const [periodView, setPeriodView] = useStoredState<PeriodView>("ecomvault-period-view", "maand");
-  const [selectedMetric, setSelectedMetric] = useStoredState<MetricKey>("ecomvault-selected-metric", "cash");
-  const [dateRange, setDateRange] = useStoredState<DateRangeState>("ecomvault-date-range", buildDateRange("total"));
+  const [theme, setTheme] = useStoredState<ThemeMode>("ecomvault-theme", "light", true);
+  const [periodView, setPeriodView] = useStoredState<PeriodView>("ecomvault-period-view", "maand", true);
+  const [selectedMetric, setSelectedMetric] = useStoredState<MetricKey>("ecomvault-selected-metric", "cash", true);
+  const [dateRange, setDateRange] = useStoredState<DateRangeState>("ecomvault-date-range", buildDateRange("total"), true);
   const [clientProfile, setClientProfile] = useStoredState<ClientProfile>("ecomvault-client-profile", {
-    companyName: "AuraWash",
-    sector: "Autodetailing / carwash",
-    contactName: "Ramzi",
-    adminEmail: "administratie@aurawash.nl",
+    companyName: demoMode ? "AuraWash" : activeWorkspace.organizationName,
+    sector: demoMode ? "Autodetailing / carwash" : "",
+    contactName: demoMode ? "Ramzi" : "",
+    adminEmail: demoMode ? "administratie@aurawash.nl" : auth.user?.email ?? "",
     bookkeeperEmail: "",
     slackChannel: "#administratie",
-    logoUrl: "https://aurawash.nl/cdn/shop/files/logo_top_site.png?v=1770326175&width=360",
+    logoUrl: demoMode ? "https://aurawash.nl/cdn/shop/files/logo_top_site.png?v=1770326175&width=360" : "",
     brandColor: "#2D5BFF",
     bankUploadCadence: "Elke 30 dagen",
     lastBankUpload: "",
   });
-  const [balances, setBalances] = useStoredState<Balance[]>("aurawash-balances", initialBalances);
-  const [salaries, setSalaries] = useStoredState<Salary[]>("aurawash-salaries", initialSalaries);
-  const [taxes, setTaxes] = useStoredState<TaxItem[]>("aurawash-taxes", initialTaxes);
-  const [fixedCosts, setFixedCosts] = useStoredState<FixedCost[]>("aurawash-fixed-costs", initialFixedCosts);
-  const [payables, setPayables] = useStoredState<Payable[]>("aurawash-payables", initialPayables);
-  const [receivables, setReceivables] = useStoredState<Receivable[]>("aurawash-receivables", initialReceivables);
-  const [payrollDocs, setPayrollDocs] = useStoredState<PayrollDoc[]>("aurawash-payroll-docs", samplePayrollDocs);
-  const [invoiceDocs, setInvoiceDocs] = useStoredState<InvoiceDocument[]>("aurawash-invoice-documents", sampleInvoiceDocuments);
+  const [balances, setBalances] = useStoredState<Balance[]>("aurawash-balances", demoMode ? initialBalances : []);
+  const [salaries, setSalaries] = useStoredState<Salary[]>("aurawash-salaries", demoMode ? initialSalaries : []);
+  const [taxes, setTaxes] = useStoredState<TaxItem[]>("aurawash-taxes", demoMode ? initialTaxes : []);
+  const [fixedCosts, setFixedCosts] = useStoredState<FixedCost[]>("aurawash-fixed-costs", demoMode ? initialFixedCosts : []);
+  const [payables, setPayables] = useStoredState<Payable[]>("aurawash-payables", demoMode ? initialPayables : []);
+  const [receivables, setReceivables] = useStoredState<Receivable[]>("aurawash-receivables", demoMode ? initialReceivables : []);
+  const [payrollDocs, setPayrollDocs] = useStoredState<PayrollDoc[]>("aurawash-payroll-docs", demoMode ? samplePayrollDocs : []);
+  const [invoiceDocs, setInvoiceDocs] = useStoredState<InvoiceDocument[]>("aurawash-invoice-documents", demoMode ? sampleInvoiceDocuments : []);
   const [automationSettings, setAutomationSettings] = useStoredState<AutomationSettings>("aurawash-automation-settings", {
     gmailAccount: "info@ecomvault.nl",
     gmailQuery: "has:attachment (factuur OR invoice OR loonstrook OR salaris)",
     slackChannel: "#administratie",
     payableReminderDays: 5,
     receivableReminderDays: 3,
-    autoCustomerEmail: true,
+    autoCustomerEmail: false,
   });
   const [employee, setEmployee] = useState(defaultPayrollEmployee);
   const [period, setPeriod] = useState("Mei 2026");
@@ -573,7 +581,7 @@ function App() {
   const [newPayable, setNewPayable] = useState({ company: "", invoice: "", amount: "", deadline: "" });
   const [newReceivable, setNewReceivable] = useState({ client: "", invoice: "", amount: "", dueDate: "" });
   const [newTax, setNewTax] = useState({ type: "", amount: "", deadline: "" });
-  const [selectedDocId, setSelectedDocId] = useState(sampleInvoiceDocuments[0]?.id ?? "");
+  const [selectedDocId, setSelectedDocId] = useState(demoMode ? sampleInvoiceDocuments[0]?.id ?? "" : "");
   const [newDocument, setNewDocument] = useState({
     type: "te-betalen" as DocumentType,
     relation: "",
@@ -583,7 +591,7 @@ function App() {
     customerEmail: "",
   });
   const [invoiceDraft, setInvoiceDraft] = useStoredState<InvoiceDraft>("ecomvault-invoice-draft", {
-    client: "Udenhout",
+    client: demoMode ? "Udenhout" : "",
     email: "",
     invoiceNumber: `EV-${today.replaceAll("-", "")}`,
     description: "Detailing services",
@@ -593,7 +601,8 @@ function App() {
   const [emailDraft, setEmailDraft] = useStoredState("aurawash-email-draft", {
     to: "",
     subject: "AuraWash administratie update",
-    body: "Hi,\n\nDe AuraWash administratie is bijgewerkt. De actuele loonstroken, facturen en betaalstatussen staan klaar in het exportpakket.\n\nGroet,\nAuraWash",
+    body: `Hi,\n\nDe administratie van ${demoMode ? "AuraWash" : activeWorkspace.organizationName} is bijgewerkt. De actuele loonstroken, facturen en betaalstatussen staan klaar in het exportpakket.\n\nGroet,\n${demoMode ? "AuraWash" : activeWorkspace.organizationName}`,
+    documentId: "",
   });
   const [aiOpen, setAiOpen] = useState(false);
   const [aiInput, setAiInput] = useState("");
@@ -606,13 +615,36 @@ function App() {
       content: "Hoi, ik ben EcomVault AI. Vraag me iets over cash, facturen, loonstroken, deadlines of exports.",
     },
   ]);
+  const [operationNotice, setOperationNotice] = useState<OperationNotice | null>(null);
+  const [operationBusy, setOperationBusy] = useState(false);
   const [productionHydrated, setProductionHydrated] = useState(auth.mode === "demo");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const invoiceFileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const bankInputRef = useRef<HTMLInputElement>(null);
+  const workbookInputRef = useRef<HTMLInputElement>(null);
   const aiMessagesRef = useRef<HTMLDivElement>(null);
   const activeSalaries = salaries.filter(isActiveEmployee);
+
+  useEffect(() => {
+    if (auth.mode !== "production") return;
+    [
+      "ecomvault-client-profile",
+      "aurawash-balances",
+      "aurawash-salaries",
+      "aurawash-taxes",
+      "aurawash-fixed-costs",
+      "aurawash-payables",
+      "aurawash-receivables",
+      "aurawash-payroll-docs",
+      "aurawash-invoice-documents",
+      "aurawash-automation-settings",
+      "ecomvault-payroll-employee",
+      "ecomvault-payroll-month",
+      "ecomvault-invoice-draft",
+      "aurawash-email-draft",
+    ].forEach((key) => window.localStorage.removeItem(key));
+  }, [auth.mode]);
 
   useEffect(() => {
     if (auth.mode !== "production") return;
@@ -656,11 +688,12 @@ function App() {
       const storedPayables = Array.isArray(snapshot?.payables) ? snapshot.payables as Payable[] : [];
       const storedReceivables = Array.isArray(snapshot?.receivables) ? snapshot.receivables as Receivable[] : [];
       const storedDocuments = Array.isArray(snapshot?.invoiceDocs) ? snapshot.invoiceDocs as InvoiceDocument[] : [];
+      const storedPayrollDocuments = Array.isArray(snapshot?.payrollDocs) ? snapshot.payrollDocs as PayrollDoc[] : [];
       setBalances(Array.isArray(snapshot?.balances) ? snapshot.balances as Balance[] : []);
       setSalaries(Array.isArray(snapshot?.salaries) ? snapshot.salaries as Salary[] : []);
       setTaxes(Array.isArray(snapshot?.taxes) ? snapshot.taxes as TaxItem[] : []);
       setFixedCosts(Array.isArray(snapshot?.fixedCosts) ? snapshot.fixedCosts as FixedCost[] : []);
-      setPayrollDocs(Array.isArray(snapshot?.payrollDocs) ? snapshot.payrollDocs as PayrollDoc[] : []);
+      setPayrollDocs(storedPayrollDocuments);
       setClientProfile(snapshot?.clientProfile && typeof snapshot.clientProfile === "object"
         ? snapshot.clientProfile as ClientProfile
         : {
@@ -716,9 +749,11 @@ function App() {
         const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata as Record<string, unknown> : {};
         const signed = await client.storage.from("documents").createSignedUrl(String(row.storage_path), 3600);
         const documentType = String(row.document_type);
-        const type: DocumentType = ["te-betalen", "te-ontvangen", "loonstrook", "vaste-last"].includes(documentType)
-          ? documentType as DocumentType
-          : "te-betalen";
+        const type: DocumentType = documentType === "payroll"
+          ? "loonstrook"
+          : ["te-betalen", "te-ontvangen", "loonstrook", "vaste-last"].includes(documentType)
+            ? documentType as DocumentType
+            : "te-betalen";
         return {
           id: String(row.id),
           type,
@@ -746,6 +781,28 @@ function App() {
       fetchedDocuments.forEach((document) => mergedDocuments.set(document.id, document));
       const nextDocuments = Array.from(mergedDocuments.values());
       setInvoiceDocs(nextDocuments);
+      const payrollFromDocuments: PayrollDoc[] = ((documentResult.data ?? []) as Array<Record<string, unknown>>)
+        .filter((row) => String(row.document_type) === "payroll")
+        .map((row) => {
+          const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata as Record<string, unknown> : {};
+          const linked = nextDocuments.find((document) => document.id === String(row.id));
+          return {
+            id: String(row.id),
+            documentId: String(row.id),
+            employee: String(metadata.sender ?? "Onbekende medewerker"),
+            period: String(metadata.period ?? String(row.received_at ?? "").slice(0, 7)),
+            fileName: String(row.file_name),
+            uploadedAt: String(row.received_at ?? "").slice(0, 10),
+            status: row.status === "approved" ? "Goedgekeurd" : row.status === "rejected" ? "Afgekeurd" : "Controle",
+            gross: Number(metadata.gross ?? 0),
+            net: Number(metadata.net ?? 0),
+            storagePath: String(row.storage_path),
+            previewUrl: linked?.previewUrl,
+          };
+        });
+      const payrollById = new Map(storedPayrollDocuments.map((document) => [document.id, document]));
+      payrollFromDocuments.forEach((document) => payrollById.set(document.id, document));
+      setPayrollDocs(Array.from(payrollById.values()));
       if (nextDocuments[0]) setSelectedDocId(nextDocuments[0].id);
       setProductionHydrated(true);
     })();
@@ -777,6 +834,25 @@ function App() {
         location_id: activeWorkspace.locationId,
         ...payload,
       });
+      await Promise.all([
+        client.from("organizations").update({
+          name: clientProfile.companyName,
+          sector: clientProfile.sector,
+          logo_url: clientProfile.logoUrl || null,
+          brand_color: clientProfile.brandColor,
+        }).eq("id", activeWorkspace.organizationId),
+        client.from("organization_settings").upsert({
+          organization_id: activeWorkspace.organizationId,
+          admin_email: clientProfile.adminEmail,
+          bookkeeper_email: clientProfile.bookkeeperEmail,
+          bank_upload_cadence: clientProfile.bankUploadCadence,
+          payable_reminder_days: automationSettings.payableReminderDays,
+          receivable_reminder_days: automationSettings.receivableReminderDays,
+          auto_customer_email: automationSettings.autoCustomerEmail,
+          preferences: { slack_channel: automationSettings.slackChannel, gmail_query: automationSettings.gmailQuery },
+        }, { onConflict: "organization_id" }),
+        syncWorkspaceInvoices(activeWorkspace, payables, receivables),
+      ]);
     }, 800);
     return () => window.clearTimeout(timer);
   }, [
@@ -1165,66 +1241,117 @@ function App() {
         .includes(query.toLowerCase()),
     );
 
-  function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+  async function handleFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
     const selectedEmployee = employee || activeSalaries[0]?.name;
     if (!selectedEmployee) return;
-
-    const additions = files.map((file, index): PayrollDoc => ({
-      id: `${Date.now()}-${index}`,
-      employee: selectedEmployee,
-      period,
-      fileName: file.name,
-      uploadedAt: today,
-      status: "Controle",
-      gross: 0,
-      net: 0,
-    }));
-
-    setPayrollDocs((current) => [...additions, ...current]);
-    setSelectedPayrollEmployee(selectedEmployee);
-    setSelectedPayrollMonth(period);
-    event.target.value = "";
+    setOperationBusy(true);
+    setOperationNotice(null);
+    try {
+      const additions = await Promise.all(files.map(async (file, index): Promise<PayrollDoc> => {
+        if (auth.mode === "production") {
+          const uploaded = await uploadWorkspaceDocument(file, activeWorkspace, auth.user?.id, {
+            type: "loonstrook",
+            relation: selectedEmployee,
+            invoiceNumber: file.name.replace(/\.[^.]+$/, ""),
+            amount: 0,
+            dueDate: "",
+            period,
+          });
+          return {
+            id: uploaded.id,
+            employee: selectedEmployee,
+            period,
+            fileName: file.name,
+            uploadedAt: today,
+            status: "Controle",
+            gross: 0,
+            net: 0,
+            documentId: uploaded.id,
+            storagePath: uploaded.storagePath,
+            previewUrl: uploaded.previewUrl,
+          };
+        }
+        return {
+          id: `${Date.now()}-${index}`,
+          employee: selectedEmployee,
+          period,
+          fileName: file.name,
+          uploadedAt: today,
+          status: "Controle",
+          gross: 0,
+          net: 0,
+          previewUrl: URL.createObjectURL(file),
+        };
+      }));
+      setPayrollDocs((current) => [...additions, ...current]);
+      setSelectedPayrollEmployee(selectedEmployee);
+      setSelectedPayrollMonth(period);
+      setOperationNotice({ tone: "good", message: `${additions.length} loonstrook${additions.length === 1 ? "" : "en"} veilig toegevoegd.` });
+    } catch {
+      setOperationNotice({ tone: "danger", message: "Upload mislukt. Controleer je 2FA, rechten en verbinding." });
+    } finally {
+      setOperationBusy(false);
+      event.target.value = "";
+    }
   }
 
-  function handleInvoiceFiles(event: ChangeEvent<HTMLInputElement>) {
+  async function handleInvoiceFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
-
-    const additions = files.map((file, index): InvoiceDocument => {
-      const invoiceNumber = newDocument.invoiceNumber.trim() || file.name.replace(/\.[^.]+$/, "");
-      const relation = newDocument.relation.trim() || "Onbekend";
-      const amount = Number(newDocument.amount);
-      const type = newDocument.type;
-      const paid = "NEE";
-      return {
-        id: `uploaded-doc-${Date.now()}-${index}`,
-        type,
-        source: "upload",
-        direction: type === "te-betalen" || type === "vaste-last" ? "inkomend" : "uitgaand",
-        relation,
-        invoiceNumber,
-        subject: `${relation} ${invoiceNumber}`,
-        sender: type === "te-ontvangen" ? "AuraWash" : relation,
-        customerEmail: newDocument.customerEmail.trim() || undefined,
-        fileName: file.name,
-        mimeType: file.type || "application/pdf",
-        receivedAt: today,
-        dueDate: newDocument.dueDate.trim(),
-        amount: Number.isNaN(amount) ? 0 : amount,
-        paid,
-        status: "Controle",
-        category: type === "vaste-last" ? "Vaste lasten" : type === "loonstrook" ? "Loonstrook" : "Factuur",
-        extractedText: "Handmatig geupload. Controleer bedrag, relatie, factuurnummer en vervaldatum.",
-        previewUrl: URL.createObjectURL(file),
-        linkedInvoice: invoiceNumber,
-      };
-    });
-
-    setInvoiceDocs((current) => [...additions, ...current]);
-    setSelectedDocId(additions[0]?.id ?? selectedDocId);
-    event.target.value = "";
+    setOperationBusy(true);
+    setOperationNotice(null);
+    try {
+      const additions = await Promise.all(files.map(async (file, index): Promise<InvoiceDocument> => {
+        const invoiceNumber = newDocument.invoiceNumber.trim() || file.name.replace(/\.[^.]+$/, "");
+        const relation = newDocument.relation.trim() || "Onbekend";
+        const amount = Number(newDocument.amount);
+        const type = newDocument.type;
+        const safeAmount = Number.isNaN(amount) ? 0 : amount;
+        const uploaded = auth.mode === "production"
+          ? await uploadWorkspaceDocument(file, activeWorkspace, auth.user?.id, {
+              type,
+              relation,
+              invoiceNumber,
+              amount: safeAmount,
+              dueDate: newDocument.dueDate.trim(),
+              customerEmail: newDocument.customerEmail.trim() || undefined,
+            })
+          : null;
+        return {
+          id: uploaded?.id ?? `uploaded-doc-${Date.now()}-${index}`,
+          type,
+          source: "upload",
+          direction: type === "te-betalen" || type === "vaste-last" ? "inkomend" : "uitgaand",
+          relation,
+          invoiceNumber,
+          subject: `${relation} ${invoiceNumber}`,
+          sender: type === "te-ontvangen" ? clientProfile.companyName : relation,
+          customerEmail: newDocument.customerEmail.trim() || undefined,
+          fileName: file.name,
+          mimeType: file.type || "application/pdf",
+          receivedAt: today,
+          dueDate: newDocument.dueDate.trim(),
+          amount: safeAmount,
+          paid: "NEE",
+          status: "Controle",
+          category: type === "vaste-last" ? "Vaste lasten" : type === "loonstrook" ? "Loonstrook" : "Factuur",
+          extractedText: "Handmatig geupload. Controleer bedrag, relatie, factuurnummer en vervaldatum.",
+          storagePath: uploaded?.storagePath,
+          previewUrl: uploaded?.previewUrl ?? URL.createObjectURL(file),
+          linkedInvoice: invoiceNumber,
+        };
+      }));
+      setInvoiceDocs((current) => [...additions, ...current]);
+      setSelectedDocId(additions[0]?.id ?? selectedDocId);
+      setOperationNotice({ tone: "good", message: `${additions.length} document${additions.length === 1 ? "" : "en"} toegevoegd en gekoppeld.` });
+    } catch {
+      setOperationNotice({ tone: "danger", message: "Documentupload mislukt. Controleer 2FA, rechten en verbinding." });
+    } finally {
+      setOperationBusy(false);
+      event.target.value = "";
+    }
   }
 
   function handleLogoUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -1238,16 +1365,139 @@ function App() {
     event.target.value = "";
   }
 
-  function handleBankUpload(event: ChangeEvent<HTMLInputElement>) {
+  async function handleBankUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    const label = `${today} · ${file.name}`;
-    setClientProfile((current) => ({ ...current, lastBankUpload: label }));
-    setBalances((current) => [
-      { label: "Bankbestand 30 dagen", amount: totals.cash },
-      ...current.filter((item) => item.label !== "Bankbestand 30 dagen"),
-    ]);
-    event.target.value = "";
+    setOperationBusy(true);
+    setOperationNotice(null);
+    try {
+      const result = await parseBankFile(file);
+      if (auth.mode === "production") {
+        await uploadBankStatement(file, activeWorkspace, auth.user?.id, {
+          transaction_count: result.transactions.length,
+          first_date: result.firstDate,
+          last_date: result.lastDate,
+          latest_balance: result.latestBalance,
+          net_movement: result.netMovement,
+        });
+      }
+      const label = `${today} · ${file.name}`;
+      setClientProfile((current) => ({ ...current, lastBankUpload: label }));
+      const balanceLabel = result.latestBalance === null ? "Netto bankmutatie import" : "Banksaldo laatste regel";
+      const balanceAmount = result.latestBalance ?? result.netMovement;
+      setBalances((current) => [
+        { label: balanceLabel, amount: balanceAmount },
+        ...current.filter((item) => !["Bankbestand 30 dagen", "Netto bankmutatie import", "Banksaldo laatste regel"].includes(item.label)),
+      ]);
+      setOperationNotice({
+        tone: result.warnings.length ? "warn" : "good",
+        message: `${result.transactions.length} transacties verwerkt (${result.firstDate || "-"} t/m ${result.lastDate || "-"}). Netto mutatie ${euro.format(result.netMovement)}.`,
+      });
+    } catch (error) {
+      setOperationNotice({ tone: "danger", message: error instanceof Error ? error.message : "Bankbestand kon niet worden verwerkt." });
+    } finally {
+      setOperationBusy(false);
+      event.target.value = "";
+    }
+  }
+
+  async function handleWorkbookImport(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setOperationBusy(true);
+    setOperationNotice(null);
+    try {
+      const imported = await parseAuraWorkbook(await file.arrayBuffer());
+      if (imported.balances.length) setBalances(imported.balances);
+      if (imported.salaries.length) setSalaries(imported.salaries);
+      if (imported.taxes.length) setTaxes(imported.taxes);
+      if (imported.fixedCosts.length) setFixedCosts(imported.fixedCosts);
+      if (imported.payables.length) setPayables(imported.payables);
+      if (imported.receivables.length) setReceivables(imported.receivables);
+      setOperationNotice({
+        tone: imported.warnings.length ? "warn" : "good",
+        message: `Excel verwerkt: ${imported.payables.length} te betalen en ${imported.receivables.length} te ontvangen facturen. Betaalstatus is uit kolom H/J gelezen.`,
+      });
+    } catch {
+      setOperationNotice({ tone: "danger", message: "Excel-import mislukt. Gebruik het originele AuraWash-overzicht of hetzelfde sjabloon." });
+    } finally {
+      setOperationBusy(false);
+      event.target.value = "";
+    }
+  }
+
+  async function createBrandedInvoiceDocument() {
+    const amount = Number(invoiceDraft.amount);
+    if (!invoiceDraft.client.trim() || !invoiceDraft.invoiceNumber.trim() || !Number.isFinite(amount) || amount <= 0) {
+      setOperationNotice({ tone: "danger", message: "Vul klant, factuurnummer en een geldig bedrag in." });
+      return;
+    }
+    setOperationBusy(true);
+    setOperationNotice(null);
+    try {
+      const generated = await createInvoicePdf(clientProfile, invoiceDraft, today);
+      downloadBlob(generated.filename, generated.blob);
+      const file = new File([generated.blob], generated.filename, { type: "application/pdf" });
+      const uploaded = auth.mode === "production"
+        ? await uploadWorkspaceDocument(file, activeWorkspace, auth.user?.id, {
+            type: "te-ontvangen",
+            relation: invoiceDraft.client.trim(),
+            invoiceNumber: invoiceDraft.invoiceNumber.trim(),
+            amount,
+            dueDate: invoiceDraft.dueDate,
+            customerEmail: invoiceDraft.email.trim() || undefined,
+            approved: true,
+          })
+        : null;
+      const document: InvoiceDocument = {
+        id: uploaded?.id ?? `generated-${crypto.randomUUID()}`,
+        type: "te-ontvangen",
+        source: "upload",
+        direction: "uitgaand",
+        relation: invoiceDraft.client.trim(),
+        invoiceNumber: invoiceDraft.invoiceNumber.trim(),
+        subject: `${clientProfile.companyName} factuur ${invoiceDraft.invoiceNumber.trim()}`,
+        sender: clientProfile.companyName,
+        customerEmail: invoiceDraft.email.trim() || undefined,
+        fileName: generated.filename,
+        mimeType: "application/pdf",
+        receivedAt: today,
+        dueDate: invoiceDraft.dueDate,
+        amount,
+        paid: "NEE",
+        status: "Goedgekeurd",
+        category: "Te ontvangen factuur",
+        extractedText: `Klant: ${invoiceDraft.client.trim()}. Factuur: ${invoiceDraft.invoiceNumber.trim()}. Bedrag: ${euro.format(amount)}.`,
+        storagePath: uploaded?.storagePath,
+        previewUrl: uploaded?.previewUrl ?? URL.createObjectURL(generated.blob),
+        linkedInvoice: invoiceDraft.invoiceNumber.trim(),
+      };
+      setInvoiceDocs((current) => [document, ...current.filter((item) => item.invoiceNumber !== document.invoiceNumber)]);
+      setSelectedDocId(document.id);
+      setReceivables((current) => current.some((item) => item.invoice === invoiceDraft.invoiceNumber.trim()) ? current : [{
+        client: invoiceDraft.client.trim(),
+        invoice: invoiceDraft.invoiceNumber.trim(),
+        amount,
+        invoiceDate: today,
+        dueDate: invoiceDraft.dueDate,
+        status: "Goedgekeurd",
+        action: "Versturen en betaling opvolgen",
+        paid: "NEE",
+        customerEmail: invoiceDraft.email.trim() || undefined,
+        documentIds: [document.id],
+      }, ...current]);
+      setEmailDraft({
+        to: invoiceDraft.email.trim(),
+        subject: `Factuur ${invoiceDraft.invoiceNumber.trim()} van ${clientProfile.companyName}`,
+        body: `Hi,\n\nIn de bijlage staat factuur ${invoiceDraft.invoiceNumber.trim()} van ${euro.format(amount)}. De uiterste betaaldatum is ${invoiceDraft.dueDate || "nog af te spreken"}.\n\nGroet,\n${clientProfile.companyName}`,
+        documentId: uploaded?.id ?? "",
+      });
+      setOperationNotice({ tone: "good", message: "Factuur als PDF gemaakt, in het dossier gezet en aan te ontvangen gekoppeld." });
+    } catch {
+      setOperationNotice({ tone: "danger", message: "De factuur kon niet volledig worden gemaakt of opgeslagen." });
+    } finally {
+      setOperationBusy(false);
+    }
   }
 
   function exportBrandedInvoice() {
@@ -1352,7 +1602,19 @@ function App() {
     setInvoiceDocs((current) => current.map((doc) => (doc.id === id ? { ...doc, ...patch } : doc)));
   }
 
-  function removeInvoiceDoc(id: string) {
+  async function removeInvoiceDoc(id: string) {
+    const document = invoiceDocs.find((doc) => doc.id === id);
+    if (auth.mode === "production" && document) {
+      setOperationBusy(true);
+      try {
+        await deleteWorkspaceDocument(id, document.storagePath);
+      } catch {
+        setOperationNotice({ tone: "danger", message: "Document kon niet veilig worden verwijderd." });
+        setOperationBusy(false);
+        return;
+      }
+      setOperationBusy(false);
+    }
     setInvoiceDocs((current) => current.filter((doc) => doc.id !== id));
     if (selectedDocId === id) {
       setSelectedDocId(invoiceDocs.find((doc) => doc.id !== id)?.id ?? "");
@@ -1365,7 +1627,19 @@ function App() {
     );
   }
 
-  function removePayroll(id: string) {
+  async function removePayroll(id: string) {
+    const document = payrollDocs.find((doc) => doc.id === id);
+    if (auth.mode === "production" && document?.documentId) {
+      setOperationBusy(true);
+      try {
+        await deleteWorkspaceDocument(document.documentId, document.storagePath);
+      } catch {
+        setOperationNotice({ tone: "danger", message: "Loonstrook kon niet veilig worden verwijderd." });
+        setOperationBusy(false);
+        return;
+      }
+      setOperationBusy(false);
+    }
     setPayrollDocs((current) => current.filter((doc) => doc.id !== id));
   }
 
@@ -1533,8 +1807,11 @@ function App() {
     try {
       const response = await fetch("/api/ai-helper", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: requestMessages, context: aiContext }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(auth.session?.access_token ? { Authorization: `Bearer ${auth.session.access_token}` } : {}),
+        },
+        body: JSON.stringify({ organizationId: activeWorkspace.organizationId, messages: requestMessages, context: aiContext }),
         signal: controller.signal,
       });
       const payload = (await response.json()) as { answer?: string; mode?: "ai" | "local"; error?: string };
@@ -1612,9 +1889,66 @@ function App() {
     );
   }
 
+  async function exportAccountantZip() {
+    setOperationBusy(true);
+    setOperationNotice({ tone: "warn", message: "Boekhouderpakket met bewijsstukken wordt opgebouwd..." });
+    try {
+      const summaryHtml = `<!doctype html><html lang="nl"><head><meta charset="utf-8"><title>${escapeHtml(clientProfile.companyName)} boekhouderpakket</title><style>body{font:14px Inter,Arial,sans-serif;color:#0B0B0C;margin:40px}h1{font-size:34px}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ddd;text-align:left}th{background:#F5F2ED}</style></head><body><h1>${escapeHtml(clientProfile.companyName)} boekhouderpakket</h1><p>Periode: ${escapeHtml(dateRangeLabel(dateRange))} · gegenereerd ${today}</p><table><thead><tr><th>Post</th><th>Bedrag</th><th>Context</th></tr></thead><tbody>${financialMetrics.map((metric) => `<tr><td>${escapeHtml(metric.title)}</td><td>${euro.format(metric.value)}</td><td>${escapeHtml(metric.detail)}</td></tr>`).join("")}</tbody></table></body></html>`;
+      await downloadAccountantPackage({
+        companyName: clientProfile.companyName,
+        generatedAt: today,
+        period: dateRangeLabel(dateRange),
+        totals: {
+          beschikbaar: totals.cash,
+          salarissen: totals.salary,
+          belastingen_open: totals.openTaxes,
+          facturen_te_betalen: totals.openPayables,
+          facturen_te_ontvangen: totals.expectedReceivables,
+          vaste_lasten_open: totals.fixedOpen,
+          cashflow_ruimte: cashCoverage,
+        },
+        salaries,
+        taxes,
+        payables,
+        receivables,
+        payrollDocs,
+        invoiceDocs,
+        json: institutionPacket as unknown as Record<string, unknown>,
+        summaryHtml,
+      });
+      setOperationNotice({ tone: "good", message: "Boekhouderpakket gedownload als ZIP met data en beschikbare bewijsstukken." });
+    } catch {
+      setOperationNotice({ tone: "danger", message: "Boekhouderpakket kon niet volledig worden opgebouwd." });
+    } finally {
+      setOperationBusy(false);
+    }
+  }
+
   const mailtoHref = `mailto:${encodeURIComponent(emailDraft.to)}?subject=${encodeURIComponent(
     emailDraft.subject,
   )}&body=${encodeURIComponent(emailDraft.body)}`;
+
+  async function sendDirectEmail() {
+    if (!auth.session || !emailDraft.to.includes("@") || !emailDraft.subject.trim() || !emailDraft.body.trim()) {
+      setOperationNotice({ tone: "danger", message: "Vul ontvanger, onderwerp en bericht volledig in." });
+      return;
+    }
+    setOperationBusy(true);
+    setOperationNotice({ tone: "warn", message: "E-mail wordt veilig verstuurd via de gekoppelde inbox..." });
+    try {
+      const response = await fetch("/api/email/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.session.access_token}` },
+        body: JSON.stringify({ organizationId: activeWorkspace.organizationId, ...emailDraft }),
+      });
+      if (!response.ok) throw new Error("send_failed");
+      setOperationNotice({ tone: "good", message: `E-mail verstuurd naar ${emailDraft.to}.` });
+    } catch {
+      setOperationNotice({ tone: "danger", message: "Direct versturen lukte niet. Controleer de e-mailkoppeling of gebruik Open e-mail." });
+    } finally {
+      setOperationBusy(false);
+    }
+  }
 
   const allTabItems = [
     { id: "onboarding" as const, icon: PlugZap, label: "Setup", description: "Connecties en klantprofiel" },
@@ -1634,6 +1968,18 @@ function App() {
   useEffect(() => {
     if (!allowedNavigation.includes(tab)) setTab(tabItems[0].id);
   }, [activeWorkspace.role, tab]);
+
+  useLayoutEffect(() => {
+    const resetScroll = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+
+    resetScroll();
+    const frame = window.requestAnimationFrame(resetScroll);
+    return () => window.cancelAnimationFrame(frame);
+  }, [tab]);
 
   return (
     <main className="ev-canvas min-h-[100dvh] text-[#0B0B0C]" data-theme={theme}>
@@ -1687,6 +2033,8 @@ function App() {
                   onClick={() => setTab(item.id)}
                   className={cn("ev-nav-item", tab === item.id && "ev-nav-item-active")}
                   aria-pressed={tab === item.id}
+                  aria-label={item.label}
+                  title={item.label}
                 >
                   <span className="ev-nav-icon">
                     <Icon size={18} />
@@ -1779,15 +2127,38 @@ function App() {
             </div>
           </div>
 
-          <CommandCenter
-            clientName={clientProfile.companyName}
-            systemScore={systemScore}
-            dateLabel={dateRangeLabel(dateRange)}
-            cashCoverage={cashCoverage}
-            proofCoverage={proofCoverage}
-            nextReminder={nextReminder}
-            onOpenAutomation={() => setTab("automation")}
-          />
+          {tab === "overzicht" && (
+            <CommandCenter
+              clientName={clientProfile.companyName}
+              systemScore={systemScore}
+              dateLabel={dateRangeLabel(dateRange)}
+              cashCoverage={cashCoverage}
+              proofCoverage={proofCoverage}
+              nextReminder={nextReminder}
+              onOpenAutomation={() => setTab("automation")}
+            />
+          )}
+
+          {operationNotice && (
+            <div
+              className={cn(
+                "mx-4 mb-4 flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm font-medium lg:mx-6",
+                operationNotice.tone === "good" && "border-emerald-200 bg-emerald-50 text-emerald-900",
+                operationNotice.tone === "warn" && "border-amber-200 bg-amber-50 text-amber-900",
+                operationNotice.tone === "danger" && "border-red-200 bg-red-50 text-red-900",
+              )}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                {operationBusy ? <LoaderCircle className="shrink-0 animate-spin" size={17} /> : <CheckCircle2 className="shrink-0" size={17} />}
+                <span>{operationNotice.message}</span>
+              </span>
+              <button type="button" onClick={() => setOperationNotice(null)} aria-label="Melding sluiten" className="shrink-0 opacity-60 hover:opacity-100">
+                <X size={17} />
+              </button>
+            </div>
+          )}
 
         {tab === "onboarding" && (
           <section className="grid gap-5">
@@ -1939,11 +2310,18 @@ function App() {
                       </div>
                     </div>
                   </div>
-                  <input ref={bankInputRef} className="hidden" type="file" accept=".csv,.xls,.xlsx" onChange={handleBankUpload} />
-                  <Button variant="accent" onClick={() => bankInputRef.current?.click()}>
-                    <Upload size={18} />
-                    Bankbestand uploaden
-                  </Button>
+                  <input ref={bankInputRef} className="hidden" type="file" accept=".csv,.xlsx" onChange={handleBankUpload} />
+                  <input ref={workbookInputRef} className="hidden" type="file" accept=".xlsx" onChange={handleWorkbookImport} />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button variant="accent" disabled={operationBusy} onClick={() => bankInputRef.current?.click()}>
+                      <Upload size={18} />
+                      Bankbestand importeren
+                    </Button>
+                    <Button variant="secondary" disabled={operationBusy} onClick={() => workbookInputRef.current?.click()}>
+                      <FileSpreadsheet size={18} />
+                      Administratie Excel importeren
+                    </Button>
+                  </div>
                 </div>
               </Card>
             </section>
@@ -1972,9 +2350,9 @@ function App() {
                   <Field label="Bedrag">
                     <Input type="number" step="0.01" value={invoiceDraft.amount} onChange={(event) => setInvoiceDraft((current) => ({ ...current, amount: event.target.value }))} />
                   </Field>
-                  <Button variant="accent" onClick={exportBrandedInvoice}>
+                  <Button variant="accent" disabled={operationBusy} onClick={() => void createBrandedInvoiceDocument()}>
                     <FilePlus2 size={18} />
-                    Branded factuur exporteren
+                    Branded factuur als PDF
                   </Button>
                 </div>
               </Card>
@@ -1988,9 +2366,13 @@ function App() {
                     <Preview label="Activa indicatie" value={euro.format(totals.cash + totals.expectedReceivables)} />
                     <Preview label="Passiva indicatie" value={euro.format(totals.openPayables + totals.openTaxes + totals.fixedOpen)} />
                   </div>
+                  <Button variant="accent" disabled={operationBusy} onClick={() => void exportAccountantZip()}>
+                    <FileArchive size={18} />
+                    Compleet ZIP-pakket
+                  </Button>
                   <Button variant="secondary" onClick={exportAccountantReport}>
                     <Download size={18} />
-                    Boekhouder HTML export
+                    Alleen HTML-overzicht
                   </Button>
                 </div>
               </Card>
@@ -2570,6 +2952,17 @@ function App() {
                       </Field>
                     </div>
                     <div className="ev-payroll-actions">
+                      {doc.previewUrl && (
+                        <a
+                          href={doc.previewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-white px-3 text-sm font-semibold text-neutral-950 ring-1 ring-neutral-200 transition hover:bg-neutral-100"
+                        >
+                          <Eye size={16} />
+                          PDF
+                        </a>
+                      )}
                       <Button variant="accent" size="sm" onClick={() => updatePayroll(doc.id, { status: "Goedgekeurd" })}>
                         <CheckCircle2 size={16} />
                         Goedkeuren
@@ -2578,7 +2971,7 @@ function App() {
                         <XCircle size={16} />
                         Afkeuren
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => removePayroll(doc.id)} aria-label="Verwijder loonstrook" title="Verwijderen">
+                      <Button variant="ghost" size="icon" disabled={operationBusy} onClick={() => void removePayroll(doc.id)} aria-label="Verwijder loonstrook" title="Verwijderen">
                         <X size={18} />
                       </Button>
                     </div>
@@ -2835,13 +3228,15 @@ function App() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() =>
+                        onClick={() => {
                           setEmailDraft({
                             to: receivables.find((item) => item.invoice === reminder.invoice)?.customerEmail ?? "",
                             subject: `Herinnering factuur ${reminder.invoice}`,
-                            body: `Hi,\n\nWe zien dat factuur ${reminder.invoice} van ${euro.format(reminder.amount)} nog open staat. Wil je deze uiterlijk ${reminder.dueDate} overboeken?\n\nGroet,\nAuraWash`,
-                          })
-                        }
+                            body: `Hi,\n\nWe zien dat factuur ${reminder.invoice} van ${euro.format(reminder.amount)} nog open staat. Wil je deze uiterlijk ${reminder.dueDate} overboeken?\n\nGroet,\n${clientProfile.companyName}`,
+                            documentId: invoiceDocs.find((document) => document.invoiceNumber === reminder.invoice || document.linkedInvoice === reminder.invoice)?.id ?? "",
+                          });
+                          setTab("email");
+                        }}
                       >
                         <Mail size={16} />
                         Mail
@@ -2902,7 +3297,7 @@ function App() {
                             PDF
                           </a>
                         )}
-                        <Button variant="danger" size="sm" onClick={() => removeInvoiceDoc(selectedDoc.id)}>
+                        <Button variant="danger" size="sm" disabled={operationBusy} onClick={() => void removeInvoiceDoc(selectedDoc.id)}>
                           <X size={16} />
                           Verwijder
                         </Button>
@@ -2997,7 +3392,7 @@ function App() {
                 <div>
                   <h2 className="text-xl font-bold">E-mail automation</h2>
                   <p className="mt-1 text-sm leading-6 text-neutral-600">
-                    Maak hier de e-mail klaar. Versturen kan via je mailprogramma of via GitHub Actions met SMTP-secrets.
+                    Maak hier de e-mail klaar en verstuur via de gekoppelde Google- of Microsoft-inbox.
                   </p>
                 </div>
               </div>
@@ -3030,9 +3425,21 @@ function App() {
                     className="min-h-48 w-full rounded-md border border-[#E8D9B8]/80 bg-white px-3 py-3 text-sm text-[#0B0B0C] outline-none transition placeholder:text-neutral-500 focus:border-[#2D5BFF] focus:ring-2 focus:ring-[#2D5BFF]/20"
                   />
                 </Field>
+                <Preview
+                  label="Bijlage"
+                  value={emailDraft.documentId
+                    ? invoiceDocs.find((document) => document.id === emailDraft.documentId)?.fileName ?? "Gekoppeld document"
+                    : "Geen bijlage gekoppeld"}
+                />
                 <div className="grid gap-3 sm:grid-cols-2">
+                  {auth.mode === "production" && (
+                    <Button variant="accent" disabled={operationBusy} onClick={() => void sendDirectEmail()}>
+                      <Send size={18} />
+                      Direct versturen
+                    </Button>
+                  )}
                   <a
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#2D5BFF] px-4 text-sm font-semibold text-white transition hover:bg-[#1F47E0]"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-white px-4 text-sm font-semibold text-neutral-950 ring-1 ring-neutral-200 transition hover:bg-neutral-100"
                     href={mailtoHref}
                   >
                     <Send size={18} />
@@ -3321,7 +3728,7 @@ function App() {
             </Card>
           </section>
         )}
-        {tab === "admin" && <PlatformAdminCenter onOpenSetup={() => setTab("onboarding")} />}
+        {tab === "admin" && <PlatformAdminCenter bankImported={Boolean(clientProfile.lastBankUpload)} onOpenSetup={() => setTab("onboarding")} />}
         </section>
       </div>
 

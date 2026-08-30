@@ -9,3 +9,11 @@ Read at session start, after global lessons. These override/extend global. Add a
 - Rule: Bij factuur- en betalingsdata altijd eerst de expliciete betaald-kolom per sheet gebruiken: `Openstaande facturen` kolom H, `Te ontvangen facturen` kolom J. Statusvelden alleen tonen als context, niet gebruiken als betaald-berekening.
 - Scope: project
 - Tags: #excel #facturen #betalingen
+
+## [2026-08-30] Bewaar alleen serialiseerbare connectorstatus
+- Context: Het Admin Center bewaarde demo-connectoren tussen browserrefreshes.
+- Mistake: Complete connectorobjecten met Lucide-componenten werden naar localStorage geschreven, waardoor de UI na herladen crashte.
+- Root cause: Presentatiecomponenten en persistente status zaten in hetzelfde object.
+- Rule: Persist connectoren en andere UI-configuratie alleen als vlakke data-id/status; voeg iconen en componenten na het laden opnieuw toe vanuit de vaste catalogus.
+- Scope: project
+- Tags: #frontend #persistence #qa

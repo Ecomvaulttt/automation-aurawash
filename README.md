@@ -8,7 +8,7 @@ AuraWash/B&T is de eerste demo-tenant.
 - Klant-onboarding met bedrijfsnaam, logo, boekhouder, Slack en inbox.
 - EcomVault design system: Ink Black, Warm White, Royal Blue en Champagne.
 - Beschikbaar geld aanpassen en toevoegen.
-- Veilige bankflow via periodieke CSV/XLS upload in plaats van bankcredentials opslaan.
+- Veilige bankflow via periodieke CSV/XLSX upload in plaats van bankcredentials opslaan.
 - Klikbare KPI's met maand/kwartaal/jaar analyse.
 - Mini-agenda met presets: vandaag, gister, laatste 7/30/90/365 dagen, deze maand, kwartaal, halfjaar, jaar en totaal.
 - Salarissen aanpassen, medewerkers toevoegen/verwijderen en loonstroken uploaden.
@@ -19,13 +19,13 @@ AuraWash/B&T is de eerste demo-tenant.
 - Te betalen facturen beheren op basis van kolom H `Betaald?`.
 - Te ontvangen facturen beheren op basis van kolom J `Beataald`.
 - Export naar CSV en JSON voor instanties.
-- E-mail automation via GitHub Actions of directe mailto-template.
+- E-mail automation via gekoppelde Google/Microsoft-inbox, GitHub Actions of mailto-fallback.
 - Inbox automation voor facturen, loonstroken en vaste lasten via IMAP.
 - Documentendossier met PDF/data-preview per factuur.
 - Slack reminders voor deadlines.
 - Automatische klantmail voor te ontvangen facturen wanneer betaling nog niet binnen is.
-- Branded factuur HTML export per klant.
-- Boekhouderpakket HTML export met kosten, cashflow, activa/passiva indicatie en bewijsstukken.
+- Branded PDF-facturen die automatisch in het dossier en bij te ontvangen komen.
+- Boekhouderpakket als ZIP met CSV, JSON, HTML en beschikbare PDF-bewijsstukken.
 - Ingebouwde EcomVault AI-helper met actuele administratiecontext en lokale fallback.
 - Automatisch controlecentrum voor achterstallige posten, ontbrekende vervaldatums, bewijsstukken, loondossiers en dubbele factuurnummers.
 - Cash-stresstest met de verwachte eindpositie nadat alle open ontvangsten zijn meegenomen.
@@ -37,8 +37,9 @@ AuraWash/B&T is de eerste demo-tenant.
 - Begeleide plug-and-play startcheck die alleen echte gereedheid meetelt.
 - Veilige OAuth-basis voor Google Workspace, Microsoft 365 en Slack.
 - Versleutelde provider-tokens; service keys en tokens komen nooit in de browser.
-- Auditlog-basis voor uitnodigingen, rolwijzigingen, intrekken en koppelingen.
-- Lokale wijzigingen blijven bewaard in `localStorage`.
+- Auditlog voor uitnodigingen, rollen, vestigingen, betaalstatus, documenten, e-mail en koppelingen.
+- Financiële productiegegevens blijven uitsluitend in Supabase; alleen UI-voorkeuren staan lokaal.
+- Dagelijkse OAuth-inboxsync, Slack-reminders en optionele klantmail via Vercel Cron of GitHub Actions.
 
 ## Starten
 
@@ -108,7 +109,7 @@ De app bevat ook een `E-mail` tab met een mailtemplate en directe `mailto` knop.
 
 Zonder Supabase-variabelen start de app expliciet als `Demo`. Met beide publieke Supabase-variabelen actief verschijnt eerst de login- en 2FA-beveiligingswand.
 
-De volledige activering voor een nieuwe klant staat in `docs/AURAWASH_PILOT_ACTIVATION.md`.
+De volledige activering voor een nieuwe klant staat in `docs/PLUG_AND_PLAY.md`.
 
 Nieuwe organisatie aanmaken nadat Supabase is ingericht:
 
@@ -125,9 +126,9 @@ Start bij de `Setup` tab:
 1. Vul bedrijfsnaam, sector, contactpersoon, logo en brandkleur in.
 2. Voeg administratie- en boekhouder e-mail toe.
 3. Kies Slack kanaal.
-4. Upload CSV/XLS bankbestand van de laatste 30 dagen.
-5. Koppel inbox/IMAP en SMTP secrets.
-6. Controleer documentendossier en zet klantmail pas daarna live.
+4. Importeer de administratie-Excel en een CSV/XLSX-bankbestand van de laatste 30 dagen.
+5. Koppel Google Workspace of Microsoft 365 en Slack via OAuth.
+6. Controleer dossier/reminders en gebruik daarna `Gecontroleerd live zetten`.
 
 ## Wat moet geinstalleerd/gekoppeld worden
 
@@ -142,13 +143,12 @@ npm run dev
 
 Voor echte automation:
 
-- IMAP toegang of Gmail app password voor de administratie inbox.
-- SMTP toegang voor uitgaande e-mail.
-- Slack Incoming Webhook voor het administratiekanaal.
-- GitHub Actions secrets voor IMAP, SMTP en Slack.
-- Periodieke CSV/XLS bankexport van de klant, of later een bank-provider integratie.
+- Google Workspace of Microsoft 365 OAuth-app voor inbox en uitgaande e-mail.
+- Slack OAuth-app voor het administratiekanaal.
+- Vercel Cron of de beveiligde GitHub-trigger voor dagelijkse automation.
+- Periodieke CSV/XLSX-bankexport van de klant, of later een bank-provider integratie.
 
-De multi-tenant database, private documentopslag, login, 2FA, rollen en connectorbeveiliging staan klaar. Voor productie moeten de provideraccounts en hostingvariabelen uit het activatieplan nog door de eigenaar worden ingesteld.
+De multi-tenant database, private documentopslag, login, 2FA, rollen, connectorbeveiliging en automation-runner staan klaar. Voor productie moeten alleen de provideraccounts en hostingvariabelen uit het activatieplan door de eigenaar worden ingesteld.
 
 Latere productuitbreidingen:
 
