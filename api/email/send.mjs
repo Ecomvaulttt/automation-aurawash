@@ -1,8 +1,12 @@
 import { authorizeOrganizationRoles, safeApiError } from "../../server/supabase-admin.mjs";
-import { connectedToken, sendProviderMail } from "../../server/platform-automation.mjs";
+import { connectedToken, sanitizeMailHeader, sendProviderMail } from "../../server/platform-automation.mjs";
 
 function string(value, max) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 export default async function handler(request, response) {
@@ -10,10 +14,10 @@ export default async function handler(request, response) {
   if (request.method !== "POST") return safeApiError(response, 405, "method_not_allowed");
   const organizationId = string(request.body?.organizationId, 36);
   const to = string(request.body?.to, 250).toLowerCase();
-  const subject = string(request.body?.subject, 240);
+  const subject = sanitizeMailHeader(request.body?.subject, 240);
   const body = string(request.body?.body, 10_000);
   const documentId = string(request.body?.documentId, 36);
-  if (!/^[0-9a-f-]{36}$/i.test(organizationId) || !/^\S+@\S+\.\S+$/.test(to) || !subject || !body) {
+  if (!isUuid(organizationId) || !/^\S+@\S+\.\S+$/.test(to) || !subject || !body) {
     return safeApiError(response, 400, "invalid_email");
   }
   let authorization;
@@ -35,7 +39,7 @@ export default async function handler(request, response) {
   try {
     let attachment = null;
     if (documentId) {
-      if (!/^[0-9a-f-]{36}$/i.test(documentId)) return safeApiError(response, 400, "invalid_attachment");
+      if (!isUuid(documentId)) return safeApiError(response, 400, "invalid_attachment");
       const { data: document } = await authorization.service.from("documents")
         .select("file_name, storage_path, mime_type, file_size")
         .eq("id", documentId).eq("organization_id", organizationId).is("deleted_at", null).maybeSingle();

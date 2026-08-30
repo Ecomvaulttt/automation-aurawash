@@ -25,6 +25,42 @@ export function extractInvoiceNumber(subject, fileName) {
     ?? fileName.replace(/\.[^.]+$/, "");
 }
 
+export function normalizeReminderSettings(settings = {}) {
+  const days = (value, fallback) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.min(30, Math.max(0, Math.round(parsed))) : fallback;
+  };
+  return {
+    payable_reminder_days: days(settings.payable_reminder_days, 5),
+    receivable_reminder_days: days(settings.receivable_reminder_days, 3),
+    auto_customer_email: settings.auto_customer_email === true,
+  };
+}
+
+export function reminderIsDue(invoice, settings, now = Date.now()) {
+  if (!invoice?.due_date || invoice.paid && invoice.paid !== "no") return false;
+  const dueAt = new Date(`${invoice.due_date}T00:00:00Z`).getTime();
+  if (!Number.isFinite(dueAt)) return false;
+  const normalized = normalizeReminderSettings(settings);
+  const threshold = invoice.direction === "receivable"
+    ? normalized.receivable_reminder_days
+    : normalized.payable_reminder_days;
+  return Math.ceil((dueAt - now) / 86_400_000) <= threshold;
+}
+
+export function isAllowedSlackWebhook(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && (url.hostname === "hooks.slack.com" || url.hostname.endsWith(".hooks.slack.com"));
+  } catch {
+    return false;
+  }
+}
+
+export function sanitizeMailHeader(value, max = 240) {
+  return String(value || "").replace(/[\r\n]+/g, " ").trim().slice(0, max);
+}
+
 function decodeBase64Url(value) {
   return Buffer.from(String(value).replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
@@ -115,7 +151,8 @@ export async function connectedToken(service, integration) {
   let token = decryptTokenPayload(secret.encrypted_payload);
   if (tokenNeedsRefresh(token)) {
     token = await refreshAuthorizationToken(integration.provider, token);
-    await service.from("integration_secrets").update({ encrypted_payload: encryptTokenPayload(token), key_version: 1 }).eq("id", secret.id);
+    const updated = await service.from("integration_secrets").update({ encrypted_payload: encryptTokenPayload(token), key_version: 1 }).eq("id", secret.id);
+    if (updated.error) throw new Error("integration_secret_update_failed");
   }
   return token;
 }
@@ -176,6 +213,7 @@ async function persistDocument(service, integration, document) {
 async function sendSlack(token, text) {
   const webhook = token?.incoming_webhook?.url;
   if (!webhook) return false;
+  if (!isAllowedSlackWebhook(webhook)) throw new Error("invalid_slack_webhook");
   const response = await fetch(webhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
   if (!response.ok) throw new Error("slack_send_failed");
   return true;
@@ -186,9 +224,13 @@ function mailText(invoice, companyName) {
 }
 
 export async function sendProviderMail(provider, token, to, subject, content, attachment = null) {
+  if (!["google", "microsoft"].includes(provider)) throw new Error("unsupported_email_provider");
+  const safeTo = sanitizeMailHeader(to, 250).toLowerCase();
+  const safeSubject = sanitizeMailHeader(subject);
+  if (!/^\S+@\S+\.\S+$/.test(safeTo) || !safeSubject) throw new Error("invalid_email_message");
   if (provider === "google") {
-    const encodedSubject = `=?UTF-8?B?${Buffer.from(subject).toString("base64")}?=`;
-    let message = `To: ${to}\r\nSubject: ${encodedSubject}\r\nMIME-Version: 1.0\r\n`;
+    const encodedSubject = `=?UTF-8?B?${Buffer.from(safeSubject).toString("base64")}?=`;
+    let message = `To: ${safeTo}\r\nSubject: ${encodedSubject}\r\nMIME-Version: 1.0\r\n`;
     if (attachment) {
       const boundary = `ecomvault-${randomUUID()}`;
       const attachmentData = attachment.content.toString("base64").replace(/(.{76})/g, "$1\r\n");
@@ -205,9 +247,9 @@ export async function sendProviderMail(provider, token, to, subject, content, at
     method: "POST",
     headers: { Authorization: `Bearer ${token.access_token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ message: {
-      subject,
+      subject: safeSubject,
       body: { contentType: "Text", content },
-      toRecipients: [{ emailAddress: { address: to } }],
+      toRecipients: [{ emailAddress: { address: safeTo } }],
       ...(attachment ? { attachments: [{
         "@odata.type": "#microsoft.graph.fileAttachment",
         name: safeName(attachment.fileName),
@@ -228,7 +270,8 @@ async function reminderAlreadySent(service, invoiceId, channel) {
 }
 
 async function runReminders(service, organization, settings, integrations) {
-  const horizon = Math.max(settings?.payable_reminder_days ?? 5, settings?.receivable_reminder_days ?? 3);
+  const normalizedSettings = normalizeReminderSettings(settings);
+  const horizon = Math.max(normalizedSettings.payable_reminder_days, normalizedSettings.receivable_reminder_days);
   const horizonDate = new Date(Date.now() + horizon * 86_400_000).toISOString().slice(0, 10);
   const { data: invoices } = await service.from("invoices").select("id, direction, relation_name, invoice_number, amount, due_date, extraction")
     .eq("organization_id", organization.id).eq("paid", "no").lte("due_date", horizonDate).is("deleted_at", null);
@@ -242,8 +285,7 @@ async function runReminders(service, organization, settings, integrations) {
   let sent = 0;
   for (const invoice of invoices ?? []) {
     const days = Math.ceil((new Date(`${invoice.due_date}T00:00:00Z`).getTime() - Date.now()) / 86_400_000);
-    const threshold = invoice.direction === "receivable" ? settings.receivable_reminder_days : settings.payable_reminder_days;
-    if (days > threshold) continue;
+    if (!reminderIsDue({ ...invoice, paid: "no" }, normalizedSettings)) continue;
     if (slackIntegration && !(await reminderAlreadySent(service, invoice.id, "slack"))) {
       const text = `*${organization.name} factuuractie*\n${invoice.direction === "receivable" ? "Te ontvangen" : "Te betalen"}: ${invoice.relation_name}\nFactuur: ${invoice.invoice_number}\nBedrag: EUR ${Number(invoice.amount).toFixed(2)}\nVervaldatum: ${invoice.due_date}\nStatus: ${days < 0 ? `${Math.abs(days)} dagen te laat` : `${days} dagen resterend`}`;
       if (await sendSlack(await tokenFor(slackIntegration), text)) {
@@ -252,7 +294,7 @@ async function runReminders(service, organization, settings, integrations) {
       }
     }
     const email = invoice.extraction?.customer_email;
-    if (invoice.direction === "receivable" && settings.auto_customer_email && email && mailIntegration && !(await reminderAlreadySent(service, invoice.id, "email"))) {
+    if (invoice.direction === "receivable" && normalizedSettings.auto_customer_email && email && mailIntegration && !(await reminderAlreadySent(service, invoice.id, "email"))) {
       await sendProviderMail(mailIntegration.provider, await tokenFor(mailIntegration), email, `Herinnering factuur ${invoice.invoice_number}`, mailText(invoice, organization.name));
       await service.from("audit_events").insert({ organization_id: organization.id, action: "reminder.email.sent", entity_type: "invoice", entity_id: invoice.id, after_data: { recipient_domain: String(email).split("@")[1] || "" } });
       sent += 1;
@@ -262,7 +304,8 @@ async function runReminders(service, organization, settings, integrations) {
 }
 
 export async function runPlatformAutomation(service, options = {}) {
-  const sinceDays = Number(options.sinceDays || 45);
+  const requestedSinceDays = Number(options.sinceDays || 45);
+  const sinceDays = Number.isFinite(requestedSinceDays) ? Math.min(365, Math.max(1, Math.round(requestedSinceDays))) : 45;
   const { data: organizations, error } = await service.from("organizations").select("id, name").eq("status", "active").is("deleted_at", null);
   if (error) throw new Error("organizations_unavailable");
   const result = { organizations: 0, documents: 0, reminders: 0, failures: 0 };

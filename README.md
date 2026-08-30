@@ -110,6 +110,7 @@ De app bevat ook een `E-mail` tab met een mailtemplate en directe `mailto` knop.
 Zonder Supabase-variabelen start de app expliciet als `Demo`. Met beide publieke Supabase-variabelen actief verschijnt eerst de login- en 2FA-beveiligingswand.
 
 De volledige activering voor een nieuwe klant staat in `docs/PLUG_AND_PLAY.md`.
+De bewezen featurelijst en stresstestresultaten staan in `docs/STRESS_TEST_REPORT.md`.
 
 Nieuwe organisatie aanmaken nadat Supabase is ingericht:
 

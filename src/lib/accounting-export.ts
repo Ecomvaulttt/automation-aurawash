@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, PDFFont, StandardFonts, rgb } from "pdf-lib";
 import type { InvoiceDocument, Payable, PayrollDoc, Receivable, Salary, TaxItem } from "../data";
 import { downloadBlob, toCsv } from "./export";
 
@@ -20,6 +20,14 @@ function safeName(value: string) {
   return value.normalize("NFKD").replace(/[^a-zA-Z0-9._ -]/g, "").replace(/\s+/g, "-").slice(0, 120);
 }
 
+function fitPdfText(value: string, font: PDFFont, size: number, maxWidth: number) {
+  const safe = String(value || "").normalize("NFKD").replace(/[^\x20-\x7e\u00a0-\u00ff\u20ac]/gi, "");
+  if (font.widthOfTextAtSize(safe, size) <= maxWidth) return safe;
+  let output = safe;
+  while (output && font.widthOfTextAtSize(`${output}...`, size) > maxWidth) output = output.slice(0, -1);
+  return `${output}...`;
+}
+
 export async function createInvoicePdf(profile: InvoiceProfile, draft: InvoiceDraft, date: string) {
   const pdf = await PDFDocument.create();
   const page = pdf.addPage([595.28, 841.89]);
@@ -28,24 +36,24 @@ export async function createInvoicePdf(profile: InvoiceProfile, draft: InvoiceDr
   const accent = hexColor(profile.brandColor);
   const amount = Number(draft.amount) || 0;
   page.drawRectangle({ x: 0, y: 790, width: 595.28, height: 52, color: rgb(11 / 255, 11 / 255, 12 / 255) });
-  page.drawText(profile.companyName, { x: 42, y: 810, size: 18, font: bold, color: rgb(1, 1, 1) });
+  page.drawText(fitPdfText(profile.companyName, bold, 18, 500), { x: 42, y: 810, size: 18, font: bold, color: rgb(1, 1, 1) });
   page.drawText("FACTUUR", { x: 42, y: 724, size: 34, font: bold, color: rgb(11 / 255, 11 / 255, 12 / 255) });
   page.drawRectangle({ x: 42, y: 705, width: 72, height: 4, color: accent });
-  page.drawText(`Factuurnummer: ${draft.invoiceNumber || "Concept"}`, { x: 350, y: 730, size: 10, font: regular });
+  page.drawText(fitPdfText(`Factuurnummer: ${draft.invoiceNumber || "Concept"}`, regular, 10, 200), { x: 350, y: 730, size: 10, font: regular });
   page.drawText(`Factuurdatum: ${date}`, { x: 350, y: 714, size: 10, font: regular });
   page.drawText(`Vervaldatum: ${draft.dueDate || "-"}`, { x: 350, y: 698, size: 10, font: regular });
   page.drawText("Factureren aan", { x: 42, y: 642, size: 10, font: bold, color: rgb(0.35, 0.35, 0.35) });
-  page.drawText(draft.client || "Klant", { x: 42, y: 620, size: 16, font: bold });
-  if (draft.email) page.drawText(draft.email, { x: 42, y: 603, size: 10, font: regular });
+  page.drawText(fitPdfText(draft.client || "Klant", bold, 16, 510), { x: 42, y: 620, size: 16, font: bold });
+  if (draft.email) page.drawText(fitPdfText(draft.email, regular, 10, 510), { x: 42, y: 603, size: 10, font: regular });
   page.drawRectangle({ x: 42, y: 505, width: 511, height: 42, color: rgb(245 / 255, 242 / 255, 237 / 255) });
   page.drawText("Omschrijving", { x: 54, y: 522, size: 10, font: bold });
   page.drawText("Bedrag", { x: 462, y: 522, size: 10, font: bold });
-  page.drawText(draft.description || "Dienstverlening", { x: 54, y: 477, size: 11, font: regular });
+  page.drawText(fitPdfText(draft.description || "Dienstverlening", regular, 11, 375), { x: 54, y: 477, size: 11, font: regular });
   page.drawText(money(amount), { x: 455, y: 477, size: 11, font: bold });
   page.drawLine({ start: { x: 42, y: 456 }, end: { x: 553, y: 456 }, thickness: 1, color: rgb(0.87, 0.85, 0.8) });
   page.drawText("Totaal", { x: 390, y: 417, size: 13, font: bold });
   page.drawText(money(amount), { x: 455, y: 417, size: 13, font: bold, color: accent });
-  page.drawText(`${profile.companyName} | ${profile.sector}`, { x: 42, y: 56, size: 9, font: regular, color: rgb(0.4, 0.4, 0.4) });
+  page.drawText(fitPdfText(`${profile.companyName} | ${profile.sector}`, regular, 9, 275), { x: 42, y: 56, size: 9, font: regular, color: rgb(0.4, 0.4, 0.4) });
   page.drawText("Gegenereerd vanuit EcomVault Ops Cockpit", { x: 350, y: 56, size: 8, font: regular, color: rgb(0.4, 0.4, 0.4) });
   const bytes = await pdf.save();
   const buffer = new Uint8Array(bytes).buffer;
@@ -75,7 +83,7 @@ export type AccountantExportInput = {
   summaryHtml: string;
 };
 
-export async function downloadAccountantPackage(input: AccountantExportInput) {
+export async function createAccountantPackage(input: AccountantExportInput) {
   const zip = new JSZip();
   zip.file("README.txt", [
     `${input.companyName} - boekhouderpakket`,
@@ -94,20 +102,33 @@ export async function downloadAccountantPackage(input: AccountantExportInput) {
   zip.file("data/loonstroken.csv", toCsv(input.payrollDocs));
 
   const missingEvidence: string[] = [];
-  await Promise.all(input.invoiceDocs.map(async (document) => {
-    if (!document.previewUrl) {
-      missingEvidence.push(`${document.invoiceNumber || document.id}: ${document.fileName}`);
+  const addEvidence = async (folder: string, id: string, fileName: string, previewUrl?: string) => {
+    if (!previewUrl) {
+      missingEvidence.push(`${id}: ${fileName}`);
       return;
     }
     try {
-      const response = await fetch(document.previewUrl);
+      const response = await fetch(previewUrl);
       if (!response.ok) throw new Error(String(response.status));
-      zip.file(`bewijsstukken/${safeName(document.invoiceNumber || document.id)}-${safeName(document.fileName)}`, await response.blob());
+      zip.file(`bewijsstukken/${folder}/${safeName(id)}-${safeName(fileName)}`, await response.blob());
     } catch {
-      missingEvidence.push(`${document.invoiceNumber || document.id}: ${document.fileName}`);
+      missingEvidence.push(`${id}: ${fileName}`);
     }
-  }));
+  };
+  await Promise.all([
+    ...input.invoiceDocs.map((document) => addEvidence("facturen", document.invoiceNumber || document.id, document.fileName, document.previewUrl)),
+    ...input.payrollDocs.map((document) => addEvidence("loonstroken", `${document.employee}-${document.period}`, document.fileName, document.previewUrl)),
+  ]);
   if (missingEvidence.length) zip.file("bewijsstukken/ONTBREKEND.txt", missingEvidence.join("\n"));
   const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
-  downloadBlob(`boekhouderpakket-${safeName(input.companyName)}-${input.generatedAt}.zip`, blob);
+  return {
+    filename: `boekhouderpakket-${safeName(input.companyName)}-${input.generatedAt}.zip`,
+    blob,
+    missingEvidence,
+  };
+}
+
+export async function downloadAccountantPackage(input: AccountantExportInput) {
+  const result = await createAccountantPackage(input);
+  downloadBlob(result.filename, result.blob);
 }
