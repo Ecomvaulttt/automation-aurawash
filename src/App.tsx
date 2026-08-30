@@ -38,6 +38,7 @@ import {
   Sparkles,
   TimerReset,
   Upload,
+  Users,
   UserRound,
   WalletCards,
   X,
@@ -67,6 +68,11 @@ import {
 } from "./data";
 import { downloadFile, ExportRow, toCsv } from "./lib/export";
 import { cn } from "./lib/utils";
+import { PlatformAdminCenter } from "./platform/admin/PlatformAdminCenter";
+import { useAuth } from "./platform/auth/AuthProvider";
+import { navigationFor } from "./platform/workspace/permissions";
+import { useWorkspace } from "./platform/workspace/WorkspaceProvider";
+import { getSupabaseClient } from "./platform/supabase";
 
 const euro = new Intl.NumberFormat("nl-NL", {
   style: "currency",
@@ -82,7 +88,7 @@ const githubActionsUrl =
   "https://github.com/Ecomvaulttt/automation-aurawash/actions/workflows/send-email.yml";
 const defaultPayrollEmployee = samplePayrollDocs[0]?.employee ?? initialSalaries[0]?.name ?? "";
 
-type Tab = "onboarding" | "overzicht" | "loonstroken" | "instanties" | "facturen" | "automation" | "email";
+type Tab = "onboarding" | "overzicht" | "loonstroken" | "instanties" | "facturen" | "automation" | "email" | "admin";
 type ThemeMode = "light" | "dark";
 type PaidValue = "JA" | "NEE" | "JA (termijn)";
 type Balance = (typeof initialBalances)[number];
@@ -522,6 +528,8 @@ function escapeHtml(value: string) {
 }
 
 function App() {
+  const auth = useAuth();
+  const { activeWorkspace, workspaces, setActiveWorkspace } = useWorkspace();
   const [tab, setTab] = useState<Tab>("overzicht");
   const [query, setQuery] = useState("");
   const [theme, setTheme] = useStoredState<ThemeMode>("ecomvault-theme", "light");
@@ -598,12 +606,195 @@ function App() {
       content: "Hoi, ik ben EcomVault AI. Vraag me iets over cash, facturen, loonstroken, deadlines of exports.",
     },
   ]);
+  const [productionHydrated, setProductionHydrated] = useState(auth.mode === "demo");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const invoiceFileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const bankInputRef = useRef<HTMLInputElement>(null);
   const aiMessagesRef = useRef<HTMLDivElement>(null);
   const activeSalaries = salaries.filter(isActiveEmployee);
+
+  useEffect(() => {
+    if (auth.mode !== "production") return;
+    const client = getSupabaseClient();
+    if (!client) return;
+    let active = true;
+    setProductionHydrated(false);
+
+    void (async () => {
+      const snapshotQuery = client
+        .from("workspace_snapshots")
+        .select("data")
+        .eq("organization_id", activeWorkspace.organizationId)
+        .is("deleted_at", null);
+      const scopedSnapshot = activeWorkspace.locationId
+        ? snapshotQuery.eq("location_id", activeWorkspace.locationId)
+        : snapshotQuery.is("location_id", null);
+      const invoiceQuery = client
+        .from("invoices")
+        .select("id, direction, relation_name, invoice_number, amount, invoice_date, due_date, paid, status, priority, notes, document_id")
+        .eq("organization_id", activeWorkspace.organizationId)
+        .is("deleted_at", null);
+      const documentQuery = client
+        .from("documents")
+        .select("id, document_type, file_name, storage_path, mime_type, source, status, received_at, metadata")
+        .eq("organization_id", activeWorkspace.organizationId)
+        .is("deleted_at", null);
+      if (activeWorkspace.locationId) {
+        invoiceQuery.eq("location_id", activeWorkspace.locationId);
+        documentQuery.eq("location_id", activeWorkspace.locationId);
+      }
+
+      const [snapshotResult, invoiceResult, documentResult] = await Promise.all([
+        scopedSnapshot.maybeSingle(),
+        invoiceQuery,
+        documentQuery,
+      ]);
+      if (!active) return;
+
+      const snapshot = snapshotResult.data?.data as Record<string, unknown> | undefined;
+      const storedPayables = Array.isArray(snapshot?.payables) ? snapshot.payables as Payable[] : [];
+      const storedReceivables = Array.isArray(snapshot?.receivables) ? snapshot.receivables as Receivable[] : [];
+      const storedDocuments = Array.isArray(snapshot?.invoiceDocs) ? snapshot.invoiceDocs as InvoiceDocument[] : [];
+      setBalances(Array.isArray(snapshot?.balances) ? snapshot.balances as Balance[] : []);
+      setSalaries(Array.isArray(snapshot?.salaries) ? snapshot.salaries as Salary[] : []);
+      setTaxes(Array.isArray(snapshot?.taxes) ? snapshot.taxes as TaxItem[] : []);
+      setFixedCosts(Array.isArray(snapshot?.fixedCosts) ? snapshot.fixedCosts as FixedCost[] : []);
+      setPayrollDocs(Array.isArray(snapshot?.payrollDocs) ? snapshot.payrollDocs as PayrollDoc[] : []);
+      setClientProfile(snapshot?.clientProfile && typeof snapshot.clientProfile === "object"
+        ? snapshot.clientProfile as ClientProfile
+        : {
+            companyName: activeWorkspace.organizationName,
+            sector: "",
+            contactName: "",
+            adminEmail: auth.user?.email ?? "",
+            bookkeeperEmail: "",
+            slackChannel: "#administratie",
+            logoUrl: "",
+            brandColor: "#2D5BFF",
+            bankUploadCadence: "Elke 30 dagen",
+            lastBankUpload: "",
+          });
+      if (snapshot?.automationSettings && typeof snapshot.automationSettings === "object") {
+        setAutomationSettings(snapshot.automationSettings as AutomationSettings);
+      }
+
+      const paidLabel = (value: string): PaidValue => value === "yes" ? "JA" : value === "installment" ? "JA (termijn)" : "NEE";
+      const invoiceRows = (invoiceResult.data ?? []) as Array<Record<string, unknown>>;
+      const fetchedPayables: Payable[] = invoiceRows.filter((row) => row.direction === "payable").map((row) => ({
+        company: String(row.relation_name ?? "Onbekend"),
+        invoice: String(row.invoice_number ?? ""),
+        amount: Number(row.amount ?? 0),
+        deadline: String(row.due_date ?? ""),
+        priority: String(row.priority ?? "normaal"),
+        status: row.status === "paid" ? "Betaald" : row.status === "approved" ? "Goedgekeurd" : "Controle",
+        note: String(row.notes ?? ""),
+        paid: paidLabel(String(row.paid ?? "no")),
+        documentIds: row.document_id ? [String(row.document_id)] : [],
+      }));
+      const fetchedReceivables: Receivable[] = invoiceRows.filter((row) => row.direction === "receivable").map((row) => ({
+        client: String(row.relation_name ?? "Onbekend"),
+        invoice: String(row.invoice_number ?? ""),
+        amount: Number(row.amount ?? 0),
+        invoiceDate: String(row.invoice_date ?? ""),
+        dueDate: String(row.due_date ?? ""),
+        status: row.status === "paid" ? "Betaald" : row.status === "approved" ? "Goedgekeurd" : "Controle",
+        action: String(row.notes ?? ""),
+        paid: paidLabel(String(row.paid ?? "no")),
+        documentIds: row.document_id ? [String(row.document_id)] : [],
+      }));
+      const mergeByInvoice = <T extends Payable | Receivable>(stored: T[], fetched: T[]) => {
+        const key = (item: T) => "invoice" in item ? item.invoice.toLowerCase() : "";
+        const merged = new Map(stored.map((item) => [key(item), item]));
+        fetched.forEach((item) => merged.set(key(item), item));
+        return Array.from(merged.values());
+      };
+      setPayables(mergeByInvoice(storedPayables, fetchedPayables));
+      setReceivables(mergeByInvoice(storedReceivables, fetchedReceivables));
+
+      const fetchedDocuments = await Promise.all(((documentResult.data ?? []) as Array<Record<string, unknown>>).map(async (row) => {
+        const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata as Record<string, unknown> : {};
+        const signed = await client.storage.from("documents").createSignedUrl(String(row.storage_path), 3600);
+        const documentType = String(row.document_type);
+        const type: DocumentType = ["te-betalen", "te-ontvangen", "loonstrook", "vaste-last"].includes(documentType)
+          ? documentType as DocumentType
+          : "te-betalen";
+        return {
+          id: String(row.id),
+          type,
+          source: ["email", "upload", "excel"].includes(String(row.source)) ? row.source as InvoiceDocument["source"] : "upload",
+          direction: type === "te-ontvangen" ? "uitgaand" as const : "inkomend" as const,
+          relation: String(metadata.sender ?? "Onbekend"),
+          invoiceNumber: String(metadata.invoice_number ?? ""),
+          subject: String(metadata.subject ?? row.file_name ?? "Document"),
+          sender: String(metadata.sender ?? "Onbekend"),
+          senderEmail: String(metadata.sender_email ?? ""),
+          fileName: String(row.file_name),
+          mimeType: String(row.mime_type),
+          receivedAt: String(row.received_at ?? "").slice(0, 10),
+          dueDate: String(metadata.due_date ?? ""),
+          amount: Number(metadata.amount ?? 0),
+          paid: "NEE" as const,
+          status: row.status === "approved" ? "Goedgekeurd" as const : row.status === "rejected" ? "Afgekeurd" as const : "Controle" as const,
+          category: type,
+          storagePath: String(row.storage_path),
+          previewUrl: signed.data?.signedUrl,
+          linkedInvoice: String(metadata.invoice_number ?? ""),
+        };
+      }));
+      const mergedDocuments = new Map(storedDocuments.map((document) => [document.id, document]));
+      fetchedDocuments.forEach((document) => mergedDocuments.set(document.id, document));
+      const nextDocuments = Array.from(mergedDocuments.values());
+      setInvoiceDocs(nextDocuments);
+      if (nextDocuments[0]) setSelectedDocId(nextDocuments[0].id);
+      setProductionHydrated(true);
+    })();
+
+    return () => { active = false; };
+  }, [activeWorkspace.locationId, activeWorkspace.organizationId, activeWorkspace.organizationName, auth.mode, auth.user?.email]);
+
+  useEffect(() => {
+    if (auth.mode !== "production" || !productionHydrated) return;
+    const client = getSupabaseClient();
+    if (!client) return;
+    const timer = window.setTimeout(async () => {
+      const scope = client
+        .from("workspace_snapshots")
+        .select("id")
+        .eq("organization_id", activeWorkspace.organizationId)
+        .is("deleted_at", null);
+      const scoped = activeWorkspace.locationId
+        ? scope.eq("location_id", activeWorkspace.locationId)
+        : scope.is("location_id", null);
+      const { data: existing } = await scoped.maybeSingle();
+      const payload = {
+        schema_version: 1,
+        data: { balances, salaries, taxes, fixedCosts, payables, receivables, payrollDocs, invoiceDocs, clientProfile, automationSettings },
+      };
+      if (existing?.id) await client.from("workspace_snapshots").update(payload).eq("id", existing.id);
+      else await client.from("workspace_snapshots").insert({
+        organization_id: activeWorkspace.organizationId,
+        location_id: activeWorkspace.locationId,
+        ...payload,
+      });
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [
+    activeWorkspace.locationId,
+    activeWorkspace.organizationId,
+    auth.mode,
+    automationSettings,
+    balances,
+    clientProfile,
+    fixedCosts,
+    invoiceDocs,
+    payables,
+    payrollDocs,
+    productionHydrated,
+    receivables,
+    salaries,
+    taxes,
+  ]);
 
   useEffect(() => {
     if (!aiOpen) return;
@@ -784,6 +975,51 @@ function App() {
     ...overduePayables.map((item) => item.amount),
     ...overdueReceivables.map((item) => item.amount),
   ]);
+  const payableDueNext30 = sum(
+    openPayableItems
+      .filter((item) => {
+        const days = daysUntil(item.deadline);
+        return days !== null && days <= 30;
+      })
+      .map((item) => item.amount),
+  );
+  const receivableDueNext30 = sum(
+    openReceivableItems
+      .filter((item) => {
+        const dueDate = item.dueDate || documentByInvoice.get(item.invoice)?.dueDate || "";
+        const days = daysUntil(dueDate);
+        return days !== null && days <= 30;
+      })
+      .map((item) => item.amount),
+  );
+  const taxesDueNext30 = sum(
+    taxes
+      .filter((item) => {
+        const days = daysUntil(item.deadline);
+        return isOpen(`${item.status} ${item.paid}`) && days !== null && days <= 30;
+      })
+      .map((item) => item.amount),
+  );
+  const projectedCash30 = totals.cash + receivableDueNext30 - payableDueNext30 - taxesDueNext30 - totals.salary;
+  const agingBuckets = [
+    { label: "1-30 dagen", min: 1, max: 30 },
+    { label: "31-60 dagen", min: 31, max: 60 },
+    { label: "Meer dan 60", min: 61, max: Number.POSITIVE_INFINITY },
+  ].map((bucket) => {
+    const payable = sum(openPayableItems.filter((item) => {
+      const days = daysUntil(item.deadline);
+      const overdueDays = days === null ? 0 : Math.max(0, -days);
+      return overdueDays >= bucket.min && overdueDays <= bucket.max;
+    }).map((item) => item.amount));
+    const receivable = sum(openReceivableItems.filter((item) => {
+      const dueDate = item.dueDate || documentByInvoice.get(item.invoice)?.dueDate || "";
+      const days = daysUntil(dueDate);
+      const overdueDays = days === null ? 0 : Math.max(0, -days);
+      return overdueDays >= bucket.min && overdueDays <= bucket.max;
+    }).map((item) => item.amount));
+    return { ...bucket, payable, receivable };
+  });
+  const agingMax = Math.max(...agingBuckets.flatMap((bucket) => [bucket.payable, bucket.receivable]), 1);
   const lastBankUploadDate = parseIsoDate(clientProfile.lastBankUpload.split("·")[0]?.trim() || "");
   const bankDataAge = lastBankUploadDate
     ? Math.max(0, Math.floor(((parseIsoDate(today) as Date).getTime() - lastBankUploadDate.getTime()) / 86_400_000))
@@ -1380,7 +1616,7 @@ function App() {
     emailDraft.subject,
   )}&body=${encodeURIComponent(emailDraft.body)}`;
 
-  const tabItems = [
+  const allTabItems = [
     { id: "onboarding" as const, icon: PlugZap, label: "Setup", description: "Connecties en klantprofiel" },
     { id: "overzicht" as const, icon: Gauge, label: "Overzicht", description: "Cash, kosten en deadlines" },
     { id: "loonstroken" as const, icon: ReceiptText, label: "Loonstroken", description: "Profielen en maandruns" },
@@ -1388,9 +1624,16 @@ function App() {
     { id: "facturen" as const, icon: WalletCards, label: "Facturen", description: "Te betalen en te ontvangen" },
     { id: "automation" as const, icon: Bot, label: "Automation", description: "Inbox, Slack en reminders" },
     { id: "email" as const, icon: Mail, label: "E-mail", description: "Templates en GitHub flow" },
+    { id: "admin" as const, icon: Users, label: "Admin Center", description: "Accounts, vestigingen en security" },
   ];
+  const allowedNavigation = navigationFor(activeWorkspace.role);
+  const tabItems = allTabItems.filter((item) => allowedNavigation.includes(item.id));
   const activeTabItem = tabItems.find((item) => item.id === tab) ?? tabItems[0];
   const ActiveTabIcon = activeTabItem.icon;
+
+  useEffect(() => {
+    if (!allowedNavigation.includes(tab)) setTab(tabItems[0].id);
+  }, [activeWorkspace.role, tab]);
 
   return (
     <main className="ev-canvas min-h-[100dvh] text-[#0B0B0C]" data-theme={theme}>
@@ -1407,6 +1650,30 @@ function App() {
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[#F5F2ED]">EcomVault Finance</p>
               <p className="truncate text-xs text-[#F5F2ED]/48">{clientProfile.companyName}</p>
+            </div>
+          </div>
+
+          <div className="ev-workspace-switcher">
+            <span>Werkruimte</span>
+            <Select
+              aria-label="Kies werkruimte"
+              value={`${activeWorkspace.organizationId}:${activeWorkspace.locationId ?? "all"}`}
+              onChange={(event) => {
+                const selected = workspaces.find(
+                  (workspace) => `${workspace.organizationId}:${workspace.locationId ?? "all"}` === event.target.value,
+                );
+                if (selected) setActiveWorkspace(selected.organizationId, selected.locationId);
+              }}
+            >
+              {workspaces.map((workspace) => (
+                <option key={`${workspace.organizationId}:${workspace.locationId ?? "all"}`} value={`${workspace.organizationId}:${workspace.locationId ?? "all"}`}>
+                  {workspace.organizationName} · {workspace.locationName ?? "Alle locaties"}
+                </option>
+              ))}
+            </Select>
+            <div className="ev-workspace-meta">
+              <Badge tone={auth.mode === "demo" ? "warn" : "good"}>{auth.mode === "demo" ? "Demo" : "Live"}</Badge>
+              <span>{activeWorkspace.role === "owner" ? "Eigenaar" : activeWorkspace.role}</span>
             </div>
           </div>
 
@@ -1467,6 +1734,12 @@ function App() {
                 Pakket
               </Button>
             </div>
+            {auth.mode === "production" && (
+              <Button variant="ghost" className="w-full justify-center" onClick={() => void auth.signOut()}>
+                <LockKeyhole size={17} />
+                Veilig uitloggen
+              </Button>
+            )}
           </div>
         </aside>
 
@@ -1498,6 +1771,10 @@ function App() {
               <Button variant="accent" className="whitespace-nowrap" onClick={exportJson}>
                 <Download size={18} />
                 Export
+              </Button>
+              <Button variant="secondary" className="ev-mobile-ai-button whitespace-nowrap md:hidden" onClick={() => setAiOpen(true)}>
+                <Sparkles size={18} />
+                AI
               </Button>
             </div>
           </div>
@@ -1854,6 +2131,38 @@ function App() {
                 onNavigate={setTab}
               />
             </section>
+
+            <Card className="ev-liquidity-radar overflow-hidden">
+              <SectionHeader title="Liquiditeitsradar" note="Prognose en ouderdom open posten" />
+              <div className="ev-liquidity-grid">
+                <div className="ev-forecast-panel">
+                  <div className="ev-forecast-total">
+                    <span>Verwacht over 30 dagen</span>
+                    <strong className={projectedCash30 < 0 ? "is-negative" : ""}>{euro.format(projectedCash30)}</strong>
+                    <small>Inclusief open posten, belasting en huidige salarisrun</small>
+                  </div>
+                  <div className="ev-forecast-flow">
+                    <div><span>Verwachte inkomsten</span><strong className="is-positive">+ {euro.format(receivableDueNext30)}</strong></div>
+                    <div><span>Te betalen facturen</span><strong>- {euro.format(payableDueNext30)}</strong></div>
+                    <div><span>Belasting binnen 30 dagen</span><strong>- {euro.format(taxesDueNext30)}</strong></div>
+                    <div><span>Salarisreserve</span><strong>- {euro.format(totals.salary)}</strong></div>
+                  </div>
+                </div>
+                <div className="ev-aging-panel">
+                  <div className="ev-aging-legend"><span><i className="is-payable" /> Te betalen</span><span><i className="is-receivable" /> Te ontvangen</span></div>
+                  {agingBuckets.map((bucket) => (
+                    <div className="ev-aging-row" key={bucket.label}>
+                      <span>{bucket.label}</span>
+                      <div>
+                        <i className="is-payable" style={{ width: `${clampPercent(bucket.payable, agingMax)}%` }} />
+                        <i className="is-receivable" style={{ width: `${clampPercent(bucket.receivable, agingMax)}%` }} />
+                      </div>
+                      <strong>{euro.format(bucket.payable + bucket.receivable)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
 
             <section className="grid gap-5 xl:grid-cols-[0.8fr_1fr]">
               <Card className="overflow-hidden">
@@ -3012,6 +3321,7 @@ function App() {
             </Card>
           </section>
         )}
+        {tab === "admin" && <PlatformAdminCenter onOpenSetup={() => setTab("onboarding")} />}
         </section>
       </div>
 

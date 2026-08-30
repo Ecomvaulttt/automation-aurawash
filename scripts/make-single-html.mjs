@@ -23,4 +23,6 @@ html = html.replace(
   },
 );
 
+html = html.replace(/[ \t]+$/gm, "");
+
 writeFileSync(resolve(root, "aurawash-administratie.html"), html);

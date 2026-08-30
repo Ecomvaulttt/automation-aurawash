@@ -1,8 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ImapFlow } from "imapflow";
+import { createClient } from "@supabase/supabase-js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outputPath = resolve(root, "automation/inbox-documents.json");
@@ -101,6 +102,99 @@ async function readExisting() {
   }
 }
 
+async function persistToPlatform(documents) {
+  const requiredPlatform = ["VITE_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ORGANIZATION_ID"];
+  if (requiredPlatform.some((key) => !process.env[key])) return { stored: 0, skipped: documents.length };
+  const client = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const organizationId = process.env.ORGANIZATION_ID;
+  const locationId = process.env.LOCATION_ID || null;
+  let stored = 0;
+
+  for (const document of documents) {
+    const existing = await client
+      .from("documents")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("source", "email")
+      .eq("source_external_id", document.id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (existing.data) continue;
+
+    const documentId = randomUUID();
+    const storagePath = `${organizationId}/${locationId || "all"}/${document.receivedAt.slice(0, 7)}/${documentId}-${safeName(document.fileName)}`;
+    const file = await readFile(document.storagePath);
+    const upload = await client.storage.from("documents").upload(storagePath, file, {
+      contentType: document.mimeType,
+      upsert: false,
+    });
+    if (upload.error) throw new Error(`Platform upload failed for ${document.id}`);
+
+    const insertedDocument = await client.from("documents").insert({
+      id: documentId,
+      organization_id: organizationId,
+      location_id: locationId,
+      document_type: document.type,
+      file_name: document.fileName,
+      storage_path: storagePath,
+      mime_type: document.mimeType,
+      file_size: file.length,
+      source: "email",
+      source_external_id: document.id,
+      status: "review_required",
+      received_at: `${document.receivedAt}T00:00:00Z`,
+      metadata: {
+        subject: document.subject,
+        sender: document.sender,
+        sender_email: document.senderEmail,
+        message_uid: document.messageUid,
+        invoice_number: document.invoiceNumber,
+        due_date: document.dueDate,
+        amount: document.amount,
+      },
+    });
+    if (insertedDocument.error) throw new Error(`Platform document insert failed for ${document.id}`);
+
+    if (["te-betalen", "te-ontvangen", "vaste-last"].includes(document.type)) {
+      const direction = document.type === "te-ontvangen" ? "receivable" : "payable";
+      const existingInvoice = await client
+        .from("invoices")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .eq("direction", direction)
+        .ilike("relation_name", document.relation)
+        .ilike("invoice_number", document.invoiceNumber)
+        .eq("amount", Number(document.amount || 0))
+        .is("deleted_at", null)
+        .maybeSingle();
+      const values = {
+        organization_id: organizationId,
+        location_id: locationId,
+        direction,
+        relation_name: document.relation,
+        invoice_number: document.invoiceNumber,
+        amount: Number(document.amount || 0),
+        invoice_date: document.receivedAt || null,
+        due_date: document.dueDate || null,
+        paid: "no",
+        source_paid_field: "email:NEE",
+        status: "review_required",
+        priority: "normal",
+        document_id: documentId,
+        notes: "Automatisch uit inbox; handmatige controle vereist.",
+        extraction: { subject: document.subject, file_name: document.fileName },
+      };
+      if (existingInvoice.data) await client.from("invoices").update(values).eq("id", existingInvoice.data.id);
+      else await client.from("invoices").insert(values);
+    }
+    stored += 1;
+  }
+
+  return { stored, skipped: documents.length - stored };
+}
+
 async function main() {
   await mkdir(documentRoot, { recursive: true });
 
@@ -186,7 +280,8 @@ async function main() {
   const next = [...documents, ...existing];
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, `${JSON.stringify(next, null, 2)}\n`);
-  console.log(`Inbox sync complete. New documents: ${documents.length}. Total documents: ${next.length}.`);
+  const platform = await persistToPlatform(documents);
+  console.log(`Inbox sync complete. New documents: ${documents.length}. Platform stored: ${platform.stored}. Total documents: ${next.length}.`);
 }
 
 await main();

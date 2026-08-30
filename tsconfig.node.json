@@ -2,9 +2,13 @@
   "compilerOptions": {
     "composite": true,
     "skipLibCheck": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": ".tsbuild/node",
+    "tsBuildInfoFile": ".tsbuild/node.tsbuildinfo",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "allowSyntheticDefaultImports": true
   },
-  "include": ["vite.config.ts", "server/**/*.d.mts"]
+  "include": ["vite.config.ts", "vitest.config.ts", "server/**/*.d.mts"]
 }

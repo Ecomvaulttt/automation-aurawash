@@ -40,6 +40,10 @@ jobs:
           PAYABLE_REMINDER_DAYS: ${{ vars.PAYABLE_REMINDER_DAYS || '5' }}
           RECEIVABLE_REMINDER_DAYS: ${{ vars.RECEIVABLE_REMINDER_DAYS || '3' }}
           AUTO_SEND_CUSTOMER_EMAILS: ${{ vars.AUTO_SEND_CUSTOMER_EMAILS || 'false' }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ORGANIZATION_ID: ${{ vars.ORGANIZATION_ID }}
+          LOCATION_ID: ${{ vars.LOCATION_ID }}
 
       - name: Upload automation output
         uses: actions/upload-artifact@v4

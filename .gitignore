@@ -5,6 +5,8 @@ qa-screenshots/
 .env.*
 !.env.example
 *.tsbuildinfo
+.tsbuild/
+supabase/.temp/
 vite.config.js
 vite.config.d.ts
 automation/documents/*

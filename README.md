@@ -29,6 +29,15 @@ AuraWash/B&T is de eerste demo-tenant.
 - Ingebouwde EcomVault AI-helper met actuele administratiecontext en lokale fallback.
 - Automatisch controlecentrum voor achterstallige posten, ontbrekende vervaldatums, bewijsstukken, loondossiers en dubbele factuurnummers.
 - Cash-stresstest met de verwachte eindpositie nadat alle open ontvangsten zijn meegenomen.
+- Liquiditeitsprognose voor 30 dagen met ouderdom van open posten.
+- Veilige login met Supabase Auth en verplichte TOTP-2FA voor financiele toegang.
+- Multi-tenant organisatie- en vestigingsafscherming met Postgres RLS.
+- Rollen voor EcomVault beheer, eigenaar, manager, boekhouder en medewerker.
+- Admin Center voor accounts, rollen, vestigingen, beveiliging en connectorstatus.
+- Begeleide plug-and-play startcheck die alleen echte gereedheid meetelt.
+- Veilige OAuth-basis voor Google Workspace, Microsoft 365 en Slack.
+- Versleutelde provider-tokens; service keys en tokens komen nooit in de browser.
+- Auditlog-basis voor uitnodigingen, rolwijzigingen, intrekken en koppelingen.
 - Lokale wijzigingen blijven bewaard in `localStorage`.
 
 ## Starten
@@ -39,6 +48,12 @@ npm run dev
 ```
 
 Open daarna `http://localhost:5173/`.
+
+Wanneer die poort bezet is:
+
+```bash
+npm run dev -- --port 5174
+```
 
 ## Build
 
@@ -89,6 +104,20 @@ Daarna kun je via `Actions > Send automation email > Run workflow` een ontvanger
 
 De app bevat ook een `E-mail` tab met een mailtemplate en directe `mailto` knop.
 
+## Veilige platformmodus
+
+Zonder Supabase-variabelen start de app expliciet als `Demo`. Met beide publieke Supabase-variabelen actief verschijnt eerst de login- en 2FA-beveiligingswand.
+
+De volledige activering voor een nieuwe klant staat in `docs/AURAWASH_PILOT_ACTIVATION.md`.
+
+Nieuwe organisatie aanmaken nadat Supabase is ingericht:
+
+```bash
+npm run platform:bootstrap
+```
+
+Dit maakt de organisatie, hoofdvestiging, eigenaar, standaardregels en connectorrecords aan. De eigenaar ontvangt een uitnodiging en rondt zelf het wachtwoord en 2FA af.
+
 ## Plug-and-play setup
 
 Start bij de `Setup` tab:
@@ -119,12 +148,13 @@ Voor echte automation:
 - GitHub Actions secrets voor IMAP, SMTP en Slack.
 - Periodieke CSV/XLS bankexport van de klant, of later een bank-provider integratie.
 
-Optioneel voor V2:
+De multi-tenant database, private documentopslag, login, 2FA, rollen en connectorbeveiliging staan klaar. Voor productie moeten de provideraccounts en hostingvariabelen uit het activatieplan nog door de eigenaar worden ingesteld.
+
+Latere productuitbreidingen:
 
 - OCR/AI extractie voor PDFs.
-- Database en auth voor multi-tenant klantlogins.
-- PDF generator voor echte factuur-PDF's.
-- Bankkoppeling via PSD2-provider.
+- Automatische bankkoppeling via een PSD2-provider.
+- Het eigen poetsopdrachten-controlesysteem voor medewerkers.
 
 ## Inbox, Slack en klantmail automation
 
@@ -164,6 +194,8 @@ SMTP_USER
 SMTP_PASS
 SMTP_FROM
 EMAIL_REPLY_TO
+VITE_SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
 ```
 
 GitHub Variables:
@@ -173,6 +205,8 @@ INBOX_SINCE_DAYS=45
 PAYABLE_REMINDER_DAYS=5
 RECEIVABLE_REMINDER_DAYS=3
 AUTO_SEND_CUSTOMER_EMAILS=false
+ORGANIZATION_ID=
+LOCATION_ID=
 ```
 
 Zet `AUTO_SEND_CUSTOMER_EMAILS` pas op `true` wanneer klantmailadressen en templates gecontroleerd zijn.

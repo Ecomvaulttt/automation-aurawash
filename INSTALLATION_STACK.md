@@ -43,6 +43,8 @@ SMTP_USER
 SMTP_PASS
 SMTP_FROM
 EMAIL_REPLY_TO
+VITE_SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
 ```
 
 GitHub Variables:
@@ -52,6 +54,8 @@ INBOX_SINCE_DAYS=45
 PAYABLE_REMINDER_DAYS=5
 RECEIVABLE_REMINDER_DAYS=3
 AUTO_SEND_CUSTOMER_EMAILS=false
+ORGANIZATION_ID=
+LOCATION_ID=
 ```
 
 Belangrijk: zet `AUTO_SEND_CUSTOMER_EMAILS` pas op `true` nadat klantmailadressen, factuurdata en templates gecontroleerd zijn.
@@ -60,12 +64,27 @@ Belangrijk: zet `AUTO_SEND_CUSTOMER_EMAILS` pas op `true` nadat klantmailadresse
 
 De GitHub OAuth/token moet `workflow` scope hebben, anders kan deze repo geen workflow-bestanden pushen of wijzigen.
 
-## V2 productwaardig
+## Platform foundation
 
-- Auth + database voor multi-tenant klantlogins.
-- File storage voor PDF bewijsstukken.
+Aanwezig in de repo:
+
+- Supabase Auth met TOTP-2FA.
+- Multi-tenant Postgres-schema en RLS per organisatie en vestiging.
+- Private Storage bucket voor bewijsstukken.
+- Rollen voor platformbeheer, eigenaar, manager, boekhouder en medewerker.
+- Admin API voor uitnodigen, rollen/status wijzigen en toegang intrekken.
+- Auditlog voor beheeracties.
+- OAuth-flow voor Google Workspace, Microsoft 365 en Slack.
+- Versleutelde tokenopslag buiten de browser.
+- Herhaalbaar bootstrap-commando per nieuwe klant.
+
+Benodigde platformvariabelen staan als lege namen in `.env.example`. Plaats waarden alleen in `.env.local` en bij de hostingprovider.
+
+Volg voor AuraWash of een volgende klant `docs/AURAWASH_PILOT_ACTIVATION.md`.
+
+## Later uitbreiden
+
 - OCR/AI extractie voor PDF facturen en loonstroken.
-- PSD2/bank-provider integratie voor automatische transacties.
-- PDF generator voor branded facturen.
-- Background jobs/queue voor inbox sync en reminders.
-- Audit log per klant voor boekhouder en compliance.
+- PSD2-bankkoppeling voor automatische transactiematching.
+- Queue/worker voor grotere aantallen mailboxen.
+- Medewerkerportaal voor poetsopdrachten.

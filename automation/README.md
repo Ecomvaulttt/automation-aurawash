@@ -38,6 +38,11 @@ EMAIL_REPLY_TO=info@bedrijf.nl
 PAYABLE_REMINDER_DAYS=5
 RECEIVABLE_REMINDER_DAYS=3
 AUTO_SEND_CUSTOMER_EMAILS=true
+
+VITE_SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+ORGANIZATION_ID
+LOCATION_ID
 ```
 
 ## GitHub Secrets
@@ -50,4 +55,5 @@ Belangrijk: wachtwoorden, IMAP app passwords, SMTP secrets en Slack webhook URL 
 
 - PDF's komen lokaal in `automation/documents/YYYY-MM/`.
 - Extractie-data komt in `automation/inbox-documents.json`.
+- Wanneer de Supabase-variabelen aanwezig zijn, worden nieuwe documenten ook naar private Storage en de tenantdatabase geschreven.
 - Deze bestanden zijn bewust genegeerd door Git, omdat ze gevoelige financiële/loondata kunnen bevatten.
