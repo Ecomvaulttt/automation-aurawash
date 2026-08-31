@@ -27,7 +27,7 @@
     "clsx": "^2.1.1",
     "imapflow": "^1.7.1",
     "jszip": "^3.10.1",
-    "lucide-react": "^1.31.0",
+    "lucide-react": "^1.35.0",
     "nodemailer": "^9.0.5",
     "pdf-lib": "^1.17.1",
     "react": "^19.2.8",
