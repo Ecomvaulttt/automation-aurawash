@@ -17,3 +17,11 @@ Read at session start, after global lessons. These override/extend global. Add a
 - Rule: Persist connectoren en andere UI-configuratie alleen als vlakke data-id/status; voeg iconen en componenten na het laden opnieuw toe vanuit de vaste catalogus.
 - Scope: project
 - Tags: #frontend #persistence #qa
+
+## [2026-08-31] Producttours moeten zichtbare targets kiezen
+- Context: De dashboardtour moest dezelfde AI-actie en grote setupkaart op desktop en mobiel uitlichten.
+- Mistake: De eerste plaatsing kon een groot target overlappen en koos op mobiel eerst de verborgen desktopknop.
+- Root cause: De tour ging uit van één selectorresultaat en alleen verticale plaatsingsruimte.
+- Rule: Kies bij dubbele responsive controls altijd het target met een niet-nul rechthoek en test tourplaatsing op overlap; wijk op desktop zijwaarts uit als boven/onder niet past.
+- Scope: project
+- Tags: #frontend #product-tour #responsive #qa
