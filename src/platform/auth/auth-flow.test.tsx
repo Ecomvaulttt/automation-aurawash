@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthProvider } from "./AuthProvider";
-import { SecurityWall } from "./SecurityWall";
+import { hashDemoCredentials, SecurityWall } from "./SecurityWall";
 
 function renderAuthPreview(preview: "login" | "mfa") {
   window.history.replaceState({}, "", `/?auth-preview=${preview}`);
@@ -15,6 +15,8 @@ function renderAuthPreview(preview: "login" | "mfa") {
 
 afterEach(() => {
   window.history.replaceState({}, "", "/");
+  window.sessionStorage.clear();
+  vi.unstubAllEnvs();
 });
 
 describe("auth flow previews", () => {
@@ -51,5 +53,21 @@ describe("auth flow previews", () => {
     expect(confirm).toBeEnabled();
     await user.click(confirm);
     expect(screen.getByRole("status")).toHaveTextContent("geldige 2FA opent");
+  });
+
+  it("opent de lokale demo alleen met de geconfigureerde accountgegevens", async () => {
+    const user = userEvent.setup();
+    const password = "test-password";
+    vi.stubEnv("VITE_DEMO_LOGIN_DIGEST", await hashDemoCredentials("info@ecomvault.nl", password));
+    renderAuthPreview("login");
+
+    await user.type(screen.getByLabelText("Wachtwoord"), "verkeerd");
+    await user.click(screen.getByRole("button", { name: "Veilig inloggen" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("E-mailadres of wachtwoord klopt niet");
+
+    await user.clear(screen.getByLabelText("Wachtwoord"));
+    await user.type(screen.getByLabelText("Wachtwoord"), password);
+    await user.click(screen.getByRole("button", { name: "Veilig inloggen" }));
+    expect(await screen.findByText("Beveiligde inhoud")).toBeInTheDocument();
   });
 });

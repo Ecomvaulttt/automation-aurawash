@@ -18,20 +18,43 @@ import { MfaGate } from "./MfaGate";
 
 type BusyAction = "email" | "google" | "reset" | null;
 
+const demoLoginEmail = "info@ecomvault.nl";
+const demoSessionKey = "ecomvault-demo-authenticated";
+
+function getDemoLoginDigest() {
+  return import.meta.env.VITE_DEMO_LOGIN_DIGEST?.trim() ?? "";
+}
+
+export async function hashDemoCredentials(email: string, password: string) {
+  const value = `${email.trim().toLowerCase()}:${password}`;
+  const digest = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export function SecurityWall({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const authPreview = auth.mode === "demo"
     ? new URLSearchParams(window.location.search).get("auth-preview")
     : null;
   const previewMode = authPreview === "login";
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(previewMode ? demoLoginEmail : "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [notice, setNotice] = useState("");
+  const [credentialError, setCredentialError] = useState("");
+  const [demoAuthenticated, setDemoAuthenticated] = useState(() => {
+    if (!previewMode) return false;
+    try {
+      return window.sessionStorage.getItem(demoSessionKey) === "true";
+    } catch {
+      return false;
+    }
+  });
 
   if (auth.mode === "demo" && authPreview === "mfa") return <MfaGate preview />;
   if (auth.mode === "demo" && !previewMode) return <>{children}</>;
+  if (auth.mode === "demo" && demoAuthenticated) return <>{children}</>;
   if (auth.loading) {
     return (
       <AuthFrame compact>
@@ -50,14 +73,32 @@ export function SecurityWall({ children }: { children: ReactNode }) {
     event.preventDefault();
     setBusy("email");
     setNotice("");
+    setCredentialError("");
+    if (previewMode) {
+      const digest = await hashDemoCredentials(email, password);
+      const configuredDigest = getDemoLoginDigest();
+      if (configuredDigest && email.trim().toLowerCase() === demoLoginEmail && digest === configuredDigest) {
+        try {
+          window.sessionStorage.setItem(demoSessionKey, "true");
+        } catch {
+          // The in-memory session still works when browser storage is unavailable.
+        }
+        setDemoAuthenticated(true);
+      } else {
+        setCredentialError("E-mailadres of wachtwoord klopt niet.");
+      }
+      setBusy(null);
+      return;
+    }
     const success = await auth.signIn(email, password);
-    if (success && previewMode) setNotice("Demo-preview: de productie-login gaat hierna door naar verplichte 2FA.");
+    if (success) setNotice("Je account is gecontroleerd. De beveiligde werkruimte wordt geopend.");
     setBusy(null);
   }
 
   async function signInWithGoogle() {
     setBusy("google");
     setNotice("");
+    setCredentialError("");
     const success = await auth.signInWithGoogle();
     if (success && previewMode) setNotice("Demo-preview: Google OAuth is klaar voor de productieconfiguratie.");
     setBusy(null);
@@ -74,7 +115,8 @@ export function SecurityWall({ children }: { children: ReactNode }) {
     setBusy(null);
   }
 
-  const message = auth.error || notice;
+  const message = credentialError || auth.error || notice;
+  const hasError = Boolean(credentialError || auth.error);
 
   return (
     <AuthFrame>
@@ -142,8 +184,8 @@ export function SecurityWall({ children }: { children: ReactNode }) {
           </div>
 
           {message && (
-            <p className={auth.error ? "ev-auth-error" : "ev-auth-notice"} role={auth.error ? "alert" : "status"}>
-              {auth.error ? null : <CheckCircle2 size={15} />}
+            <p className={hasError ? "ev-auth-error" : "ev-auth-notice"} role={hasError ? "alert" : "status"}>
+              {hasError ? null : <CheckCircle2 size={15} />}
               {message}
             </p>
           )}
