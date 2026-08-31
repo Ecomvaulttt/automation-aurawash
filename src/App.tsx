@@ -27,6 +27,7 @@ import {
   Mail,
   MessageSquareWarning,
   Palette,
+  PlayCircle,
   PlugZap,
   Plus,
   ReceiptText,
@@ -50,6 +51,7 @@ import { Card } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import { Select } from "./components/ui/select";
 import { SkyToggle } from "./components/ui/sky-toggle";
+import { ProductTour, ProductTourStep } from "./components/product-tour";
 import {
   balances as initialBalances,
   fixedCosts as initialFixedCosts,
@@ -119,6 +121,55 @@ type DateRangeState = {
   start: string;
   end: string;
 };
+
+type AppTourStep = ProductTourStep & { tab: Tab };
+
+const productTourSteps: AppTourStep[] = [
+  {
+    tab: "overzicht",
+    selector: "[data-tour='command-center']",
+    title: "Je dagelijkse cockpit",
+    description: "Zie direct de systeemscore, cashruimte, bewijsdekking en eerstvolgende actie voor deze werkruimte.",
+  },
+  {
+    tab: "overzicht",
+    selector: "[data-tour='period-filter']",
+    title: "Cijfers in elke periode",
+    description: "Wissel tussen vandaag, maand, kwartaal, jaar of een eigen datumbereik. Alle overzichten rekenen direct mee.",
+  },
+  {
+    tab: "onboarding",
+    selector: "[data-tour='installation-status']",
+    title: "Plug-and-play installatie",
+    description: "Klik op iedere statusregel om meteen naar de ontbrekende koppeling of instelling te springen.",
+  },
+  {
+    tab: "facturen",
+    selector: "[data-tour='invoice-control']",
+    title: "Facturen onder controle",
+    description: "Beheer te betalen en te ontvangen facturen, inclusief betaalstatus, prioriteit, deadlines en PDF-bewijs.",
+  },
+  {
+    tab: "loonstroken",
+    selector: "[data-tour='payroll-profiles']",
+    title: "Loonstroken per medewerker",
+    description: "Open een medewerkersprofiel, kies de maand en keur loonstroken goed of af vanuit één dossier.",
+  },
+  {
+    tab: "automation",
+    selector: "[data-tour='automation-settings']",
+    title: "Automatische opvolging",
+    description: "Koppel inbox en Slack en bepaal wanneer interne meldingen en klantmails worden verstuurd.",
+  },
+  {
+    tab: "automation",
+    selector: "[data-tour='ai-helper']",
+    title: "Vraag het aan EcomVault AI",
+    description: "Stel direct vragen over cash, open facturen, deadlines, loonstroken en ontbrekende administratie.",
+  },
+];
+
+const productTourStorageKey = "ecomvault-product-tour-v1";
 
 type ClientProfile = {
   companyName: string;
@@ -518,11 +569,11 @@ function periodLabel(period: PeriodView) {
 
 function connectorStatus(settings: AutomationSettings, profile: ClientProfile) {
   return [
-    { label: "Gmail inbox", done: Boolean(settings.gmailAccount), detail: settings.gmailAccount || "Nog niet verbonden" },
-    { label: "Slack kanaal", done: Boolean(settings.slackChannel), detail: settings.slackChannel || "Nog niet gekozen" },
-    { label: "Boekhouder", done: Boolean(profile.bookkeeperEmail), detail: profile.bookkeeperEmail || "E-mail ontbreekt" },
-    { label: "Bankbestand", done: Boolean(profile.lastBankUpload), detail: profile.lastBankUpload || "Upload CSV/XLS van 30 dagen" },
-    { label: "Klantbranding", done: Boolean(profile.companyName && profile.logoUrl), detail: profile.companyName || "Bedrijfsnaam/logo" },
+    { key: "gmail", label: "Gmail inbox", done: Boolean(settings.gmailAccount), detail: settings.gmailAccount || "Nog niet verbonden", tab: "automation" as Tab, targetId: "setup-gmail" },
+    { key: "slack", label: "Slack kanaal", done: Boolean(settings.slackChannel), detail: settings.slackChannel || "Nog niet gekozen", tab: "automation" as Tab, targetId: "setup-slack" },
+    { key: "bookkeeper", label: "Boekhouder", done: Boolean(profile.bookkeeperEmail), detail: profile.bookkeeperEmail || "E-mail ontbreekt", tab: "onboarding" as Tab, targetId: "setup-bookkeeper" },
+    { key: "bank", label: "Bankbestand", done: Boolean(profile.lastBankUpload), detail: profile.lastBankUpload || "Upload CSV/XLS van 30 dagen", tab: "onboarding" as Tab, targetId: "setup-bank" },
+    { key: "branding", label: "Klantbranding", done: Boolean(profile.companyName && profile.logoUrl), detail: profile.companyName || "Bedrijfsnaam/logo", tab: "onboarding" as Tab, targetId: "setup-branding" },
   ];
 }
 
@@ -605,6 +656,15 @@ function App() {
     documentId: "",
   });
   const [aiOpen, setAiOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem(productTourStorageKey) === null;
+    } catch {
+      return true;
+    }
+  });
+  const [tourStepIndex, setTourStepIndex] = useState(0);
+  const [setupFocus, setSetupFocus] = useState<string | null>(null);
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiMode, setAiMode] = useState<"ai" | "local" | null>(null);
@@ -1964,10 +2024,55 @@ function App() {
   const tabItems = allTabItems.filter((item) => allowedNavigation.includes(item.id));
   const activeTabItem = tabItems.find((item) => item.id === tab) ?? tabItems[0];
   const ActiveTabIcon = activeTabItem.icon;
+  const visibleTourSteps = useMemo(
+    () => productTourSteps.filter((step) => navigationFor(activeWorkspace.role).includes(step.tab)),
+    [activeWorkspace.role],
+  );
+
+  function closeProductTour(status: "completed" | "skipped") {
+    try {
+      window.localStorage.setItem(productTourStorageKey, status);
+    } catch {
+      // The tour still closes when browser storage is unavailable.
+    }
+    setTourOpen(false);
+  }
+
+  function restartProductTour() {
+    setAiOpen(false);
+    setTourStepIndex(0);
+    setTourOpen(true);
+  }
+
+  function openSetupItem(targetTab: Tab, targetId: string) {
+    setTab(targetTab);
+    setSetupFocus(targetId);
+    window.setTimeout(() => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      const focusable = target.matches("input, button, select, textarea")
+        ? target as HTMLElement
+        : target.querySelector<HTMLElement>("input:not([type='hidden']):not(.hidden), button:not([disabled]), select, textarea");
+      window.setTimeout(() => focusable?.focus({ preventScroll: true }), 260);
+    }, targetTab === tab ? 40 : 180);
+    window.setTimeout(() => setSetupFocus((current) => current === targetId ? null : current), 2_100);
+  }
 
   useEffect(() => {
     if (!allowedNavigation.includes(tab)) setTab(tabItems[0].id);
   }, [activeWorkspace.role, tab]);
+
+  useEffect(() => {
+    if (!tourOpen) return;
+    const step = visibleTourSteps[tourStepIndex];
+    if (!step) {
+      setTourStepIndex(0);
+      return;
+    }
+    setAiOpen(false);
+    if (tab !== step.tab) setTab(step.tab);
+  }, [tourOpen, tourStepIndex, visibleTourSteps, tab]);
 
   useLayoutEffect(() => {
     const resetScroll = () => {
@@ -2116,11 +2221,15 @@ function App() {
                 <TimerReset size={18} />
                 Acties
               </Button>
+              <Button variant="secondary" className="ev-tour-trigger whitespace-nowrap" onClick={restartProductTour} aria-label="Start demo-rondleiding" title="Start demo-rondleiding">
+                <PlayCircle size={18} />
+                <span>Tour</span>
+              </Button>
               <Button variant="accent" className="whitespace-nowrap" onClick={exportJson}>
                 <Download size={18} />
                 Export
               </Button>
-              <Button variant="secondary" className="ev-mobile-ai-button whitespace-nowrap md:hidden" onClick={() => setAiOpen(true)}>
+              <Button variant="secondary" className="ev-mobile-ai-button whitespace-nowrap md:hidden" data-tour="ai-helper" onClick={() => setAiOpen(true)}>
                 <Sparkles size={18} />
                 AI
               </Button>
@@ -2128,15 +2237,17 @@ function App() {
           </div>
 
           {tab === "overzicht" && (
-            <CommandCenter
-              clientName={clientProfile.companyName}
-              systemScore={systemScore}
-              dateLabel={dateRangeLabel(dateRange)}
-              cashCoverage={cashCoverage}
-              proofCoverage={proofCoverage}
-              nextReminder={nextReminder}
-              onOpenAutomation={() => setTab("automation")}
-            />
+            <div data-tour="command-center">
+              <CommandCenter
+                clientName={clientProfile.companyName}
+                systemScore={systemScore}
+                dateLabel={dateRangeLabel(dateRange)}
+                cashCoverage={cashCoverage}
+                proofCoverage={proofCoverage}
+                nextReminder={nextReminder}
+                onOpenAutomation={() => setTab("automation")}
+              />
+            </div>
           )}
 
           {operationNotice && (
@@ -2182,7 +2293,7 @@ function App() {
                     <MiniStat label="Open acties" value={`${reminders.length}`} />
                   </div>
                 </div>
-                <div className="rounded-2xl border border-[#E8D9B8]/20 bg-white/[0.06] p-5 backdrop-blur">
+                <div className="rounded-2xl border border-[#E8D9B8]/20 bg-white/[0.06] p-5 backdrop-blur" data-tour="installation-status">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium text-[#F5F2ED]/60">Installatiestatus</p>
@@ -2192,13 +2303,22 @@ function App() {
                   </div>
                   <div className="mt-5 grid gap-3">
                     {connectorChecklist.map((item) => (
-                      <div key={item.label} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                      <button
+                        key={item.key}
+                        type="button"
+                        className="ev-installation-link"
+                        onClick={() => openSetupItem(item.tab, item.targetId)}
+                        aria-label={`${item.label}: ${item.detail}. Open instelling`}
+                      >
                         <div className="min-w-0">
                           <p className="font-medium text-white">{item.label}</p>
                           <p className="truncate text-sm text-[#F5F2ED]/55">{item.detail}</p>
                         </div>
-                        <Badge tone={item.done ? "good" : "warn"}>{item.done ? "Verbonden" : "Actie"}</Badge>
-                      </div>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <Badge tone={item.done ? "good" : "warn"}>{item.done ? "Verbonden" : "Actie"}</Badge>
+                          <ChevronRight size={17} aria-hidden="true" />
+                        </span>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -2213,7 +2333,7 @@ function App() {
             </section>
 
             <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-              <Card className="overflow-hidden">
+              <Card id="setup-branding" className={cn("overflow-hidden ev-setup-target", setupFocus === "setup-branding" && "ev-setup-target-focus")}>
                 <SectionHeader title="Klantprofiel" note="White-label basis voor deze klant" />
                 <div className="grid gap-4 p-5">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -2246,13 +2366,15 @@ function App() {
                         onChange={(event) => setClientProfile((current) => ({ ...current, adminEmail: event.target.value }))}
                       />
                     </Field>
-                    <Field label="Boekhouder e-mail">
-                      <Input
-                        type="email"
-                        value={clientProfile.bookkeeperEmail}
-                        onChange={(event) => setClientProfile((current) => ({ ...current, bookkeeperEmail: event.target.value }))}
-                      />
-                    </Field>
+                    <div id="setup-bookkeeper" className={cn("ev-setup-target", setupFocus === "setup-bookkeeper" && "ev-setup-target-focus")}>
+                      <Field label="Boekhouder e-mail">
+                        <Input
+                          type="email"
+                          value={clientProfile.bookkeeperEmail}
+                          onChange={(event) => setClientProfile((current) => ({ ...current, bookkeeperEmail: event.target.value }))}
+                        />
+                      </Field>
+                    </div>
                     <Field label="Slack kanaal">
                       <Input
                         value={clientProfile.slackChannel}
@@ -2287,7 +2409,7 @@ function App() {
                 </div>
               </Card>
 
-              <Card className="overflow-hidden">
+              <Card id="setup-bank" className={cn("overflow-hidden ev-setup-target", setupFocus === "setup-bank" && "ev-setup-target-focus")}>
                 <SectionHeader title="Veilige bankflow" note="Zonder banklogins in het systeem" />
                 <div className="grid gap-4 p-5">
                   <div className="grid gap-3 sm:grid-cols-3">
@@ -2382,7 +2504,7 @@ function App() {
 
         {tab === "overzicht" && (
           <>
-            <Card className="overflow-hidden">
+            <Card className="overflow-hidden" data-tour="period-filter">
               <SectionHeader title="Periode kiezen" note={dateRangeLabel(dateRange)} />
               <div className="grid gap-4 p-4">
                 <div className="ev-period-toolbar">
@@ -2796,7 +2918,7 @@ function App() {
         {tab === "loonstroken" && (
           <section className="grid gap-5 xl:grid-cols-[420px_1fr]">
             <div className="grid gap-5">
-              <Card className="overflow-hidden">
+              <Card className="overflow-hidden" data-tour="payroll-profiles">
                 <SectionHeader title="Medewerkerprofielen" note={`${activeSalaries.length} actief`} />
                 <div className="grid divide-y divide-[#E8D9B8]/60">
                   {salaries.map((salary) => {
@@ -3055,17 +3177,19 @@ function App() {
         {tab === "automation" && (
           <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
             <div className="grid gap-5">
-              <Card className="overflow-hidden">
+              <Card className="overflow-hidden" data-tour="automation-settings">
                 <SectionHeader title="Inbox automation" note="Gmail, PDF's, Slack en klantmail" />
                 <div className="grid gap-4 p-5">
-                  <Field label="Gmail account">
-                    <Input
-                      value={automationSettings.gmailAccount}
-                      onChange={(event) =>
-                        setAutomationSettings((current) => ({ ...current, gmailAccount: event.target.value }))
-                      }
-                    />
-                  </Field>
+                  <div id="setup-gmail" className={cn("ev-setup-target", setupFocus === "setup-gmail" && "ev-setup-target-focus")}>
+                    <Field label="Gmail account">
+                      <Input
+                        value={automationSettings.gmailAccount}
+                        onChange={(event) =>
+                          setAutomationSettings((current) => ({ ...current, gmailAccount: event.target.value }))
+                        }
+                      />
+                    </Field>
+                  </div>
                   <Field label="Zoekregel inbox">
                     <Input
                       value={automationSettings.gmailQuery}
@@ -3074,14 +3198,16 @@ function App() {
                       }
                     />
                   </Field>
-                  <Field label="Slack kanaal">
-                    <Input
-                      value={automationSettings.slackChannel}
-                      onChange={(event) =>
-                        setAutomationSettings((current) => ({ ...current, slackChannel: event.target.value }))
-                      }
-                    />
-                  </Field>
+                  <div id="setup-slack" className={cn("ev-setup-target", setupFocus === "setup-slack" && "ev-setup-target-focus")}>
+                    <Field label="Slack kanaal">
+                      <Input
+                        value={automationSettings.slackChannel}
+                        onChange={(event) =>
+                          setAutomationSettings((current) => ({ ...current, slackChannel: event.target.value }))
+                        }
+                      />
+                    </Field>
+                  </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Te betalen melding">
                       <Input
@@ -3473,7 +3599,7 @@ function App() {
 
         {tab === "facturen" && (
           <section className="grid gap-5">
-            <Card className="p-4">
+            <Card className="p-4" data-tour="invoice-control">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h2 className="text-xl font-bold">Facturen controle</h2>
@@ -3744,6 +3870,14 @@ function App() {
         onSubmit={sendAiMessage}
         onClear={clearAiConversation}
       />
+      <ProductTour
+        open={tourOpen}
+        steps={visibleTourSteps}
+        stepIndex={tourStepIndex}
+        onStepChange={setTourStepIndex}
+        onSkip={() => closeProductTour("skipped")}
+        onFinish={() => closeProductTour("completed")}
+      />
     </main>
   );
 }
@@ -3861,6 +3995,7 @@ function AiHelper({
       <button
         type="button"
         className="ev-ai-launcher"
+        data-tour="ai-helper"
         onClick={() => onOpenChange(!open)}
         aria-label={open ? "Verberg AI-helper" : "Open AI-helper"}
         aria-expanded={open}

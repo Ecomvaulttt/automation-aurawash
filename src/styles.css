@@ -472,6 +472,233 @@ select {
   background: linear-gradient(120deg, transparent 45%, rgba(45, 91, 255, 0.2));
 }
 
+.ev-installation-link {
+  display: flex;
+  width: 100%;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 12px;
+  color: rgba(245, 242, 237, 0.5);
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.ev-installation-link:hover {
+  border-color: rgba(45, 91, 255, 0.58);
+  background: rgba(45, 91, 255, 0.12);
+  transform: translateX(2px);
+}
+
+.ev-installation-link:focus-visible {
+  outline: 2px solid #21d4fd;
+  outline-offset: 2px;
+}
+
+.ev-installation-link > span svg {
+  transition: transform 160ms ease;
+}
+
+.ev-installation-link:hover > span svg {
+  transform: translateX(2px);
+}
+
+.ev-setup-target {
+  border-radius: 10px;
+  transition: box-shadow 220ms ease, background 220ms ease;
+}
+
+.ev-setup-target-focus {
+  animation: ev-setup-focus 1.8s ease;
+}
+
+@keyframes ev-setup-focus {
+  0%, 100% { box-shadow: none; }
+  20%, 78% { box-shadow: 0 0 0 4px rgba(45, 91, 255, 0.2), 0 14px 36px rgba(33, 82, 255, 0.12); }
+}
+
+.ev-tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.ev-tour-blocker {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.ev-tour-spotlight {
+  position: fixed;
+  z-index: 2;
+  border: 2px solid rgba(33, 212, 253, 0.9);
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 9999px rgba(7, 10, 17, 0.7),
+    0 0 0 5px rgba(45, 91, 255, 0.22),
+    0 18px 55px rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+  transition: inset 240ms cubic-bezier(0.16, 1, 0.3, 1), width 240ms cubic-bezier(0.16, 1, 0.3, 1), height 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ev-tour-panel {
+  position: fixed;
+  z-index: 3;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: #14161b;
+  color: #f5f2ed;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.42);
+  pointer-events: auto;
+  animation: ev-tour-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+}
+
+@keyframes ev-tour-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ev-tour-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 16px 12px;
+}
+
+.ev-tour-header > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ev-tour-header span {
+  color: rgba(245, 242, 237, 0.58);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ev-tour-header strong {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 3px 8px;
+  color: #e8d9b8;
+  font-size: 11px;
+}
+
+.ev-tour-header button,
+.ev-tour-back {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(245, 242, 237, 0.72);
+}
+
+.ev-tour-header button:hover,
+.ev-tour-back:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.ev-tour-progress {
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ev-tour-progress span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #2152ff, #21d4fd);
+  transition: width 240ms ease;
+}
+
+.ev-tour-copy {
+  min-height: 128px;
+  padding: 20px 18px 18px;
+}
+
+.ev-tour-copy h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+.ev-tour-copy p {
+  margin: 9px 0 0;
+  color: rgba(245, 242, 237, 0.62);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.ev-tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  padding: 12px 14px;
+}
+
+.ev-tour-actions > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ev-tour-skip {
+  border: 0;
+  background: transparent;
+  padding: 8px 4px;
+  color: rgba(245, 242, 237, 0.52);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ev-tour-skip:hover {
+  color: #ffffff;
+}
+
+.ev-tour-back:disabled {
+  opacity: 0.32;
+}
+
+.ev-tour-next {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(310deg, #2152ff, #21d4fd);
+  padding: 0 13px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(33, 82, 255, 0.28);
+}
+
+.ev-tour-next:hover {
+  box-shadow: 0 10px 24px rgba(33, 82, 255, 0.38);
+}
+
 .ev-command-primary {
   position: relative;
   overflow: hidden;
@@ -1498,6 +1725,16 @@ table tbody tr:hover {
     flex: 1;
   }
 
+  .ev-tour-trigger span {
+    display: none;
+  }
+
+  .ev-tour-trigger {
+    flex: 0 0 42px !important;
+    width: 42px;
+    padding-inline: 0;
+  }
+
   .ev-period-toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -1546,6 +1783,27 @@ table tbody tr:hover {
     width: auto;
     height: auto;
     border-radius: 12px;
+  }
+
+  .ev-tour-panel {
+    max-height: calc(100dvh - 24px);
+  }
+
+  .ev-tour-copy {
+    min-height: 112px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ev-tour-panel,
+  .ev-setup-target-focus {
+    animation: none;
+  }
+
+  .ev-tour-spotlight,
+  .ev-tour-progress span,
+  .ev-installation-link {
+    transition: none;
   }
 }
 
