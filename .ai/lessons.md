@@ -33,3 +33,11 @@ Read at session start, after global lessons. These override/extend global. Add a
 - Rule: Gebruik voor OTP één echte input met `one-time-code` en render de zes vakken alleen visueel; test typen en plakken in een echte browser.
 - Scope: project
 - Tags: #auth #2fa #frontend #qa
+
+## [2026-08-31] Responsive layouts volgen beschikbare contentruimte
+- Context: Het documentendossier gebruikte twee kolommen zodra de viewport 1024px breed was.
+- Mistake: Met de zijbalk ernaast bleef te weinig contentruimte over, waardoor de detailkolom buiten beeld viel.
+- Root cause: De breakpointkeuze was gebaseerd op viewportbreedte en hield geen rekening met de app-shell.
+- Rule: Laat brede werkruimtes pas naar meerdere kolommen schakelen als de daadwerkelijke contentruimte voldoende is; zet `min-width: 0` op alle gridkinderen en test met zijbalk op 1024, 1280 en mobiel.
+- Scope: project
+- Tags: #frontend #responsive #dashboard #qa
