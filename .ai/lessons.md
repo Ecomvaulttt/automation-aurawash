@@ -25,3 +25,11 @@ Read at session start, after global lessons. These override/extend global. Add a
 - Rule: Kies bij dubbele responsive controls altijd het target met een niet-nul rechthoek en test tourplaatsing op overlap; wijk op desktop zijwaarts uit als boven/onder niet past.
 - Scope: project
 - Tags: #frontend #product-tour #responsive #qa
+
+## [2026-08-31] OTP gebruikt één semantische invoer
+- Context: De verplichte 2FA-pagina gebruikte zes losse gecontroleerde cijfervelden met automatische focus.
+- Mistake: De velden zagen er goed uit maar verloren in een echte browser invoer tijdens focuswissels.
+- Root cause: Presentatie en invoerstate waren verdeeld over zes afhankelijke controls.
+- Rule: Gebruik voor OTP één echte input met `one-time-code` en render de zes vakken alleen visueel; test typen en plakken in een echte browser.
+- Scope: project
+- Tags: #auth #2fa #frontend #qa
