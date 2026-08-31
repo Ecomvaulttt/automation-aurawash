@@ -5,9 +5,11 @@ Dit zijn de enige stappen die de eigenaar van de accounts zelf moet uitvoeren. D
 ## 1. Supabase aanmaken
 
 1. Maak een Supabase-project in een EU-regio.
-2. Zet e-mailauthenticatie aan.
-3. Voeg de uiteindelijke app-URL toe bij Auth redirect URLs.
-4. Bewaar de project-URL, publishable key en service-role key alleen in `.env.local` en bij de hostingprovider.
+2. Zet e-mailauthenticatie en TOTP-MFA aan.
+3. Zet bij `Authentication > Providers` ook Google aan met een eigen Google OAuth client.
+4. Gebruik bij Google als callback `https://JOUW_PROJECT_REF.supabase.co/auth/v1/callback`.
+5. Voeg de uiteindelijke app-URL toe als `Site URL` en bij `Auth redirect URLs`.
+6. Bewaar de Google client secret, project-URL, publishable key en service-role key alleen bij Supabase, in `.env.local` of bij de hostingprovider.
 
 Gebruik deze namen:
 
@@ -56,7 +58,7 @@ Voer daarna uit:
 npm run platform:bootstrap
 ```
 
-De eigenaar ontvangt een uitnodiging. Na het instellen van het wachtwoord moet de eigenaar direct de QR-code voor 2FA scannen.
+De eigenaar ontvangt een uitnodiging. Inloggen kan daarna met Google of e-mail/wachtwoord. Na de eerste login moet de eigenaar direct de QR-code voor 2FA scannen; zonder AAL2 opent de administratie niet.
 
 ## 4. E-mail en Slack koppelen
 

@@ -1815,20 +1815,209 @@ table tbody tr:hover {
   display: grid;
   min-height: 100dvh;
   place-items: center;
-  background:
-    linear-gradient(140deg, rgba(33, 82, 255, 0.1), transparent 38%),
-    #f4f5f7;
-  padding: 24px;
+  background: #eef1f4;
+  padding: 22px;
   color: #344767;
 }
 
+.ev-auth-shell {
+  display: grid;
+  width: min(100%, 1180px);
+  min-height: min(760px, calc(100dvh - 44px));
+  overflow: hidden;
+  grid-template-columns: minmax(340px, 0.92fr) minmax(460px, 1.08fr);
+  border: 1px solid rgba(210, 214, 218, 0.9);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 32px 90px rgba(31, 39, 61, 0.12);
+}
+
+.ev-auth-story {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  flex-direction: column;
+  background: #121419;
+  padding: 42px;
+  color: #f5f2ed;
+}
+
+.ev-auth-story::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, #2152ff, #21d4fd 52%, #e8d9b8);
+}
+
+.ev-auth-story-brand,
+.ev-auth-stage-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.ev-auth-story-brand > span,
+.ev-auth-stage-brand > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  border-radius: 9px;
+  background: #2d5bff;
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(45, 91, 255, 0.3);
+}
+
+.ev-auth-story-brand strong,
+.ev-auth-story-brand small {
+  display: block;
+}
+
+.ev-auth-story-brand strong {
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.ev-auth-story-brand small {
+  margin-top: 2px;
+  color: rgba(245, 242, 237, 0.48);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.ev-auth-story-copy {
+  position: relative;
+  z-index: 1;
+  max-width: 410px;
+  margin-top: 104px;
+}
+
+.ev-auth-story-label {
+  color: #21d4fd;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.ev-auth-story-copy h2 {
+  max-width: 380px;
+  margin: 14px 0 0;
+  color: #ffffff;
+  font-size: 36px;
+  font-weight: 680;
+  letter-spacing: 0;
+  line-height: 1.14;
+}
+
+.ev-auth-story-copy p {
+  margin: 18px 0 0;
+  color: rgba(245, 242, 237, 0.58);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.ev-auth-story-checks {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 4px;
+  margin-top: 48px;
+}
+
+.ev-auth-story-checks > div {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  border-top: 1px solid rgba(245, 242, 237, 0.09);
+  padding: 14px 0;
+}
+
+.ev-auth-story-checks > div > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(45, 91, 255, 0.14);
+  color: #77ddf4;
+}
+
+.ev-auth-story-checks p,
+.ev-auth-access-note p,
+.ev-mfa-session-note p,
+.ev-mfa-steps p {
+  margin: 0;
+}
+
+.ev-auth-story-checks strong,
+.ev-auth-story-checks small,
+.ev-auth-access-note strong,
+.ev-auth-access-note span,
+.ev-mfa-session-note strong,
+.ev-mfa-session-note span,
+.ev-mfa-steps strong,
+.ev-mfa-steps small {
+  display: block;
+}
+
+.ev-auth-story-checks strong {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+}
+
+.ev-auth-story-checks small {
+  margin-top: 3px;
+  color: rgba(245, 242, 237, 0.42);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.ev-auth-story-status {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  color: rgba(245, 242, 237, 0.48);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ev-auth-story-status > span {
+  color: #52d9a5;
+}
+
+.ev-auth-stage {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  background: #ffffff;
+  padding: 28px 48px 22px;
+}
+
+.ev-auth-stage-brand {
+  display: none;
+  color: #344767;
+  font-size: 13px;
+}
+
+.ev-auth-stage-brand > span {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+}
+
 .ev-auth-card {
-  width: min(100%, 430px);
-  border: 1px solid rgba(222, 226, 230, 0.82);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.96);
-  padding: 32px;
-  box-shadow: 0 28px 80px rgba(31, 39, 61, 0.12);
+  width: min(100%, 470px);
+  margin: auto;
+  background: #ffffff;
+  padding: 30px 0;
 }
 
 .ev-auth-mark {
@@ -1836,62 +2025,143 @@ table tbody tr:hover {
   width: 48px;
   height: 48px;
   place-items: center;
-  border-radius: 11px;
+  border-radius: 10px;
   background: linear-gradient(310deg, #2152ff, #21d4fd);
   color: white;
   box-shadow: 0 12px 26px rgba(33, 82, 255, 0.24);
 }
 
-.ev-auth-brand {
-  margin: 18px 0 5px;
-  color: #2152ff;
-  font-size: 12px;
+.ev-auth-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ev-auth-security-pill {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d7f1e5;
+  border-radius: 999px;
+  background: #f0fbf6;
+  padding: 0 10px;
+  color: #08784f;
+  font-size: 10px;
   font-weight: 750;
+  text-transform: uppercase;
+}
+
+.ev-auth-heading {
+  margin-top: 28px;
+}
+
+.ev-auth-brand {
+  margin: 0 0 7px;
+  color: #2152ff;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
 }
 
 .ev-auth-card h1 {
   margin: 0;
   color: #0b0b0c;
-  font-size: 28px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0;
   line-height: 1.2;
 }
 
 .ev-auth-copy {
   margin: 10px 0 0;
   color: #67748e;
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.65;
 }
 
-.ev-auth-trust {
+.ev-google-button {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 28px;
+  border: 1px solid #dfe3e8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0 15px;
+  color: #344767;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 5px 14px rgba(31, 39, 61, 0.05);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.ev-google-button:hover:not(:disabled) {
+  border-color: rgba(45, 91, 255, 0.35);
+  box-shadow: 0 9px 22px rgba(31, 39, 61, 0.08);
+  transform: translateY(-1px);
+}
+
+.ev-google-button > svg:last-child {
+  margin-left: auto;
+  color: #8392ab;
+}
+
+.ev-google-button:disabled {
+  opacity: 0.6;
+}
+
+.ev-google-mark {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border: 1px solid #e2e5e9;
+  border-radius: 50%;
+  color: #4285f4;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.ev-auth-divider {
   display: flex;
   align-items: center;
-  gap: 7px;
-  margin-top: 18px;
-  border: 1px solid #d7f1e5;
-  border-radius: 8px;
-  background: #f0fbf6;
-  padding: 9px 11px;
-  color: #08784f;
-  font-size: 12px;
+  gap: 12px;
+  margin: 22px 0 15px;
+  color: #98a2b3;
+  font-size: 10px;
   font-weight: 650;
+}
+
+.ev-auth-divider::before,
+.ev-auth-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: #edf0f2;
 }
 
 .ev-auth-form {
   display: grid;
-  gap: 9px;
-  margin-top: 22px;
+  gap: 8px;
+  margin-top: 0;
 }
 
 .ev-auth-form label {
-  margin-top: 4px;
+  margin-top: 3px;
   color: #344767;
   font-size: 12px;
   font-weight: 700;
 }
 
 .ev-auth-form > button {
-  margin-top: 8px;
+  min-height: 48px;
+  margin-top: 11px;
 }
 
 .ev-auth-input-wrap {
@@ -1900,19 +2170,75 @@ table tbody tr:hover {
 
 .ev-auth-input-wrap > svg {
   position: absolute;
-  top: 11px;
-  left: 12px;
+  top: 15px;
+  left: 14px;
   z-index: 1;
   color: #8392ab;
 }
 
 .ev-auth-input-wrap input {
-  padding-left: 40px;
+  height: 48px;
+  padding-right: 44px;
+  padding-left: 43px;
+  border-color: #dfe3e8;
+  background: #fbfcfd;
+  box-shadow: none;
+}
+
+.ev-auth-input-wrap input:focus {
+  border-color: #2d5bff;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(45, 91, 255, 0.09);
+}
+
+.ev-auth-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.ev-auth-label-row label {
+  margin: 0;
+}
+
+.ev-auth-label-row button,
+.ev-auth-password-toggle {
+  border: 0;
+  background: transparent;
+}
+
+.ev-auth-label-row button {
+  padding: 3px 0;
+  color: #2152ff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ev-auth-password-toggle {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 7px;
+  color: #8392ab;
+}
+
+.ev-auth-password-toggle:hover {
+  background: #f0f2f5;
+  color: #344767;
 }
 
 .ev-auth-error,
 .ev-auth-notice {
-  margin: 4px 0 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 6px 0 0;
   border-radius: 7px;
   padding: 9px 10px;
   font-size: 12px;
@@ -1930,32 +2256,154 @@ table tbody tr:hover {
 }
 
 .ev-auth-link {
-  width: 100%;
+  display: inline-flex;
+  width: auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 16px auto 0;
   border: 0;
   background: transparent;
-  padding: 15px 0 0;
+  padding: 5px;
   color: #67748e;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
 }
 
-.ev-mfa-setup {
-  display: grid;
-  justify-items: center;
+.ev-auth-access-note,
+.ev-mfa-session-note {
+  display: flex;
+  align-items: flex-start;
   gap: 10px;
   margin-top: 20px;
-  border: 1px solid #e9ecef;
-  border-radius: 10px;
-  background: #f8f9fa;
+  border-top: 1px solid #edf0f2;
+  padding-top: 17px;
+  color: #8392ab;
+}
+
+.ev-auth-access-note > svg,
+.ev-mfa-session-note > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #2d5bff;
+}
+
+.ev-auth-access-note strong,
+.ev-mfa-session-note strong {
+  color: #344767;
+  font-size: 11px;
+}
+
+.ev-auth-access-note span,
+.ev-mfa-session-note span {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.ev-auth-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  color: #a0a8b5;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.ev-auth-loading {
+  text-align: center;
+}
+
+.ev-auth-loading .ev-auth-mark {
+  margin: 0 auto 22px;
+}
+
+.ev-mfa-card {
+  width: min(100%, 520px);
+}
+
+.ev-mfa-enrollment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 184px;
+  gap: 18px;
+  margin-top: 22px;
+  border: 1px solid #e7eaee;
+  border-radius: 9px;
+  background: #fbfcfd;
   padding: 16px;
 }
 
-.ev-mfa-setup img {
-  width: 180px;
-  height: 180px;
+.ev-mfa-steps {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+}
+
+.ev-mfa-steps > div {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  border-left: 1px solid #dfe3e8;
+  padding: 8px 0 12px 14px;
+}
+
+.ev-mfa-steps > div > span {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 1px solid #dfe3e8;
   border-radius: 7px;
+  background: #ffffff;
+  color: #8392ab;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.ev-mfa-steps > div.is-active > span {
+  border-color: #2d5bff;
+  background: #2d5bff;
+  color: #ffffff;
+}
+
+.ev-mfa-steps strong {
+  color: #344767;
+  font-size: 11px;
+}
+
+.ev-mfa-steps small {
+  margin-top: 3px;
+  color: #8392ab;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.ev-mfa-setup {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
+.ev-mfa-setup img {
+  width: 174px;
+  height: 174px;
+  border: 1px solid #e7eaee;
+  border-radius: 8px;
   background: white;
+  padding: 6px;
+}
+
+.ev-mfa-qr-loading {
+  display: grid;
+  width: 174px;
+  height: 174px;
+  place-items: center;
+  border: 1px dashed #cfd5dc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #2d5bff;
 }
 
 .ev-mfa-setup details {
@@ -1963,6 +2411,55 @@ table tbody tr:hover {
   color: #67748e;
   font-size: 11px;
   text-align: center;
+}
+
+.ev-mfa-form {
+  margin-top: 22px;
+}
+
+.ev-mfa-code {
+  position: relative;
+}
+
+.ev-mfa-code > input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  cursor: text;
+  opacity: 0.01;
+  outline: none;
+}
+
+.ev-mfa-code-slots {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ev-mfa-code-slots span {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  height: 52px;
+  place-items: center;
+  border: 1px solid #dfe3e8;
+  border-radius: 8px;
+  background: #fbfcfd;
+  color: #0b0b0c;
+  font-size: 21px;
+  font-weight: 750;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.ev-mfa-code:focus-within .ev-mfa-code-slots span.is-active {
+  border-color: #2d5bff;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(45, 91, 255, 0.1);
 }
 
 .ev-mfa-setup code {
@@ -2766,5 +3263,103 @@ table tbody tr:hover {
   .ev-aging-row strong {
     grid-column: 2;
     text-align: left;
+  }
+}
+
+@media (max-width: 940px) {
+  .ev-auth-shell {
+    grid-template-columns: minmax(280px, 0.76fr) minmax(430px, 1.24fr);
+  }
+
+  .ev-auth-story {
+    padding: 32px;
+  }
+
+  .ev-auth-story-copy {
+    margin-top: 72px;
+  }
+
+  .ev-auth-story-copy h2 {
+    font-size: 31px;
+  }
+
+  .ev-auth-story-checks > div:last-child {
+    display: none;
+  }
+
+  .ev-auth-stage {
+    padding-inline: 34px;
+  }
+}
+
+@media (max-width: 760px) {
+  .ev-auth-canvas {
+    padding: 0;
+  }
+
+  .ev-auth-shell,
+  .ev-auth-shell-compact {
+    min-height: 100dvh;
+    grid-template-columns: 1fr;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .ev-auth-story {
+    display: grid;
+    min-height: 92px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding: 20px 22px;
+  }
+
+  .ev-auth-story-copy,
+  .ev-auth-story-checks {
+    display: none;
+  }
+
+  .ev-auth-story-status {
+    margin: 0;
+  }
+
+  .ev-auth-stage {
+    min-height: calc(100dvh - 92px);
+    padding: 18px 22px 16px;
+  }
+
+  .ev-auth-card {
+    padding: 26px 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .ev-auth-card {
+    padding: 20px 0;
+  }
+
+  .ev-auth-story-status {
+    display: none;
+  }
+
+  .ev-mfa-enrollment {
+    grid-template-columns: 1fr;
+  }
+
+  .ev-mfa-steps {
+    display: none;
+  }
+
+  .ev-mfa-code {
+    min-width: 0;
+  }
+
+  .ev-mfa-code-slots {
+    gap: 5px;
+  }
+
+  .ev-mfa-code-slots span {
+    height: 48px;
+    font-size: 18px;
   }
 }

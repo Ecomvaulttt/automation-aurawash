@@ -21,6 +21,7 @@ type AuthContextValue = {
   enrollment: TotpEnrollment | null;
   error: string;
   signIn(email: string, password: string): Promise<boolean>;
+  signInWithGoogle(): Promise<boolean>;
   signOut(): Promise<void>;
   sendPasswordReset(email: string): Promise<boolean>;
   enrollTotp(): Promise<boolean>;
@@ -75,8 +76,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAssuranceLevel(null);
         setHasVerifiedTotp(false);
         setEnrollment(null);
+        setLoading(false);
       } else {
-        window.setTimeout(() => void refreshSecurityState(), 0);
+        setLoading(true);
+        window.setTimeout(() => {
+          void refreshSecurityState().finally(() => {
+            if (active) setLoading(false);
+          });
+        }, 0);
       }
     });
 
@@ -99,6 +106,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!client) return true;
       setError("");
       const result = await client.auth.signInWithPassword({ email, password });
+      if (result.error) {
+        setError(friendlyError(result.error.message));
+        return false;
+      }
+      return true;
+    },
+    async signInWithGoogle() {
+      if (!client) return true;
+      setError("");
+      const result = await client.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}${window.location.pathname}`,
+        },
+      });
       if (result.error) {
         setError(friendlyError(result.error.message));
         return false;
