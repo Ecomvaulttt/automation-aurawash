@@ -591,6 +591,7 @@ function App() {
   const demoMode = auth.mode === "demo";
   const [tab, setTab] = useState<Tab>("overzicht");
   const [query, setQuery] = useState("");
+  const [invoiceLedgerView, setInvoiceLedgerView] = useState<"payables" | "receivables">("payables");
   const [theme, setTheme] = useStoredState<ThemeMode>("ecomvault-theme", "light", true);
   const [periodView, setPeriodView] = useStoredState<PeriodView>("ecomvault-period-view", "maand", true);
   const [selectedMetric, setSelectedMetric] = useStoredState<MetricKey>("ecomvault-selected-metric", "cash", true);
@@ -3378,40 +3379,40 @@ function App() {
 
             <Card className="overflow-hidden">
               <SectionHeader title="Documentendossier" note={`${invoiceDocs.length} documenten · ${linkedDocumentCount} gekoppeld`} />
-              <div className="grid min-h-[720px] lg:grid-cols-[360px_1fr]">
-                <div className="border-b border-neutral-200 lg:border-b-0 lg:border-r">
-                  <div className="grid max-h-[720px] overflow-y-auto">
+              <div className="ev-document-workspace">
+                <div className="ev-document-sidebar">
+                  <div className="ev-document-list">
                     {invoiceDocs.map((doc) => (
                       <button
                         key={doc.id}
                         onClick={() => setSelectedDocId(doc.id)}
                         className={cn(
-                          "grid gap-2 border-b border-neutral-100 p-4 text-left transition hover:bg-neutral-50",
-                          selectedDoc?.id === doc.id && "bg-[#2D5BFF]/10",
+                          "ev-document-item",
+                          selectedDoc?.id === doc.id && "is-active",
                         )}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate font-semibold text-neutral-950">{doc.relation}</span>
+                        <div className="ev-document-item-head">
+                          <span>{doc.relation}</span>
                           <Badge tone={doc.paid === "NEE" ? "danger" : "good"}>{doc.paid}</Badge>
                         </div>
-                        <span className="truncate text-sm text-neutral-600">{doc.invoiceNumber} · {doc.fileName}</span>
-                        <span className="text-xs font-semibold uppercase text-neutral-500">{doc.type} · {doc.source}</span>
+                        <span className="ev-document-item-file">{doc.invoiceNumber} · {doc.fileName}</span>
+                        <span className="ev-document-item-meta">{doc.type} · {doc.source}</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
                 {selectedDoc && (
-                  <div className="grid gap-5 p-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="ev-document-detail">
+                    <div className="ev-document-detail-head">
                       <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="ev-document-title">
                           <FileText size={20} className="text-neutral-500" />
-                          <h2 className="truncate text-xl font-bold text-neutral-950">{selectedDoc.fileName}</h2>
+                          <h2>{selectedDoc.fileName}</h2>
                         </div>
-                        <p className="mt-1 text-sm text-neutral-600">{selectedDoc.subject}</p>
+                        <p>{selectedDoc.subject}</p>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="ev-document-actions">
                         {selectedDoc.previewUrl && (
                           <a
                             href={selectedDoc.previewUrl}
@@ -3430,7 +3431,7 @@ function App() {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="ev-document-fields">
                       <Field label="Relatie">
                         <Input
                           value={selectedDoc.relation}
@@ -3485,7 +3486,7 @@ function App() {
                       </Field>
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="ev-document-metadata">
                       <Preview label="Afzender" value={`${selectedDoc.sender}${selectedDoc.senderEmail ? ` · ${selectedDoc.senderEmail}` : ""}`} />
                       <Preview label="Ontvangen" value={selectedDoc.receivedAt} />
                       <Preview label="Opslag" value={selectedDoc.storagePath || "Upload in browser-sessie"} wide />
@@ -3496,11 +3497,13 @@ function App() {
                       <iframe
                         title={selectedDoc.fileName}
                         src={selectedDoc.previewUrl}
-                        className="min-h-[360px] w-full rounded-md border border-neutral-200 bg-neutral-50"
+                        className="ev-document-preview"
                       />
                     ) : (
-                      <div className="grid min-h-[260px] place-items-center rounded-md border border-dashed border-neutral-300 bg-neutral-50 p-6 text-center text-sm text-neutral-600">
-                        PDF-preview verschijnt hier bij browser-upload. Automatisch gefetchte PDF's staan lokaal onder `automation/documents`.
+                      <div className="ev-document-empty-preview">
+                        <FileText size={24} />
+                        <strong>Geen browserpreview beschikbaar</strong>
+                        <span>Het document blijft gekoppeld aan dit dossier en kan vanuit de opslag worden geopend.</span>
                       </div>
                     )}
                   </div>
@@ -3598,258 +3601,218 @@ function App() {
         )}
 
         {tab === "facturen" && (
-          <section className="grid gap-5">
-            <Card className="p-4" data-tour="invoice-control">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 className="text-xl font-bold">Facturen controle</h2>
-                  <p className="text-sm text-neutral-600">Te betalen gebruikt kolom H. Te ontvangen gebruikt kolom J.</p>
+          <section className="ev-invoice-page">
+            <Card className="ev-invoice-command" data-tour="invoice-control">
+              <div className="ev-invoice-command-head">
+                <div className="ev-invoice-command-copy">
+                  <span className="ev-section-icon"><ReceiptText size={18} /></span>
+                  <div>
+                    <h2>Facturen</h2>
+                    <p>Controleer betalingen, deadlines en bewijsstukken vanuit één werkruimte.</p>
+                  </div>
                 </div>
-                <div className="relative w-full md:w-80">
+                <div className="ev-invoice-search">
                   <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
-                  <Input className="pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Zoek factuur" />
+                  <Input className="pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Zoek op relatie of factuur" />
+                </div>
+              </div>
+              <div className="ev-invoice-overview">
+                <button
+                  type="button"
+                  className={cn("ev-invoice-view", invoiceLedgerView === "payables" && "is-active")}
+                  onClick={() => setInvoiceLedgerView("payables")}
+                >
+                  <span>Te betalen</span>
+                  <strong>{euro.format(totals.openPayables)}</strong>
+                  <small>{openPayableItems.length} open · kolom H</small>
+                </button>
+                <button
+                  type="button"
+                  className={cn("ev-invoice-view", invoiceLedgerView === "receivables" && "is-active")}
+                  onClick={() => setInvoiceLedgerView("receivables")}
+                >
+                  <span>Te ontvangen</span>
+                  <strong>{euro.format(totals.expectedReceivables)}</strong>
+                  <small>{openReceivableItems.length} open · kolom J</small>
+                </button>
+                <div className="ev-invoice-health">
+                  <span>Bewijsdekking</span>
+                  <strong>{proofCoverage}%</strong>
+                  <small>{linkedDocumentCount} documenten gekoppeld</small>
                 </div>
               </div>
             </Card>
 
-            <Card className="overflow-hidden">
-              <SectionHeader title="Te betalen facturen" note={`${payables.filter((p) => isPaidNo(p.paid)).length} open volgens kolom H`} />
-              <div className="table-scroll overflow-x-auto">
-                <table className="w-full min-w-[1060px] text-left text-sm">
-                  <thead className="bg-neutral-950 text-white">
-                    <tr>
-                      <Th>Bedrijf</Th>
-                      <Th>Factuur</Th>
-                      <Th>Bedrag</Th>
-                      <Th>Deadline</Th>
-                      <Th>Prioriteit</Th>
-                      <Th>Status</Th>
-                      <Th>Betaald H</Th>
-                      <Th>Data</Th>
-                      <Th>Opmerking</Th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-100">
-                    {filteredPayables.map(({ item, index }) => {
-                      const matchingDoc = invoiceDocs.find((doc) => doc.invoiceNumber === item.invoice || doc.linkedInvoice === item.invoice);
-                      return (
-                        <tr key={`${item.company}-${item.invoice}`}>
-                          <Td className="font-semibold text-neutral-950">{item.company}</Td>
-                          <Td>{item.invoice}</Td>
-                          <Td>{euro.format(item.amount)}</Td>
-                          <Td>{item.deadline}</Td>
-                          <Td><Badge tone={statusTone(item.priority)}>{item.priority}</Badge></Td>
-                          <Td>
-                            <Select
-                              value={item.status}
-                              onChange={(event) =>
-                                setPayables((current) => updateIndex(current, index, { status: event.target.value }))
-                              }
-                            >
-                              <option>OPEN</option>
-                              <option>Open</option>
-                              <option>Betaald</option>
-                              <option>in behandeling</option>
-                            </Select>
-                          </Td>
-                          <Td>
-                            <PaidSelect
-                              value={item.paid}
-                              onChange={(paid) =>
-                                setPayables((current) =>
-                                  updateIndex(current, index, {
-                                    paid,
-                                    status: paid === "NEE" ? "OPEN" : "Betaald",
-                                  }),
-                                )
-                              }
-                            />
-                          </Td>
-                          <Td>
-                            {matchingDoc ? (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedDocId(matchingDoc.id);
-                                  setTab("automation");
-                                }}
-                              >
-                                <Eye size={16} />
-                                Bekijk
-                              </Button>
-                            ) : (
-                              <Badge tone="warn">Geen PDF</Badge>
-                            )}
-                          </Td>
-                          <Td className="max-w-[260px] truncate">{item.note || "-"}</Td>
-                        </tr>
-                      );
-                    })}
-                    <tr className="bg-neutral-50">
-                      <Td>
-                        <Input
-                          value={newPayable.company}
-                          onChange={(event) => setNewPayable((current) => ({ ...current, company: event.target.value }))}
-                          placeholder="Leverancier"
-                        />
-                      </Td>
-                      <Td>
-                        <Input
-                          value={newPayable.invoice}
-                          onChange={(event) => setNewPayable((current) => ({ ...current, invoice: event.target.value }))}
-                          placeholder="Factuurnummer te betalen"
-                        />
-                      </Td>
-                      <Td>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={newPayable.amount}
-                          onChange={(event) => setNewPayable((current) => ({ ...current, amount: event.target.value }))}
-                          placeholder="Bedrag te betalen"
-                        />
-                      </Td>
-                      <Td>
-                        <Input
-                          value={newPayable.deadline}
-                          onChange={(event) => setNewPayable((current) => ({ ...current, deadline: event.target.value }))}
-                          placeholder="Deadline"
-                        />
-                      </Td>
-                      <Td><Badge tone="warn">Middel</Badge></Td>
-                      <Td>OPEN</Td>
-                      <Td><Badge tone="danger">NEE</Badge></Td>
-                      <Td><Badge tone="warn">Upload</Badge></Td>
-                      <Td>
-                        <Button variant="accent" size="sm" onClick={addPayable}>
-                          <Plus size={16} />
-                          Toevoegen
-                        </Button>
-                      </Td>
-                    </tr>
-                  </tbody>
-                </table>
+            <Card className="ev-invoice-ledger">
+              <div className="ev-invoice-ledger-head">
+                <div>
+                  <span>{invoiceLedgerView === "payables" ? "Uitgaande verplichtingen" : "Inkomende betalingen"}</span>
+                  <h3>{invoiceLedgerView === "payables" ? "Te betalen facturen" : "Te ontvangen facturen"}</h3>
+                </div>
+                <Badge tone={invoiceLedgerView === "payables" ? "warn" : "good"}>
+                  {invoiceLedgerView === "payables" ? "Bron: kolom H" : "Bron: kolom J"}
+                </Badge>
               </div>
-            </Card>
 
-            <Card className="overflow-hidden">
-              <SectionHeader title="Te ontvangen facturen" note={`${receivables.filter((r) => isPaidNo(r.paid)).length} open volgens kolom J`} />
-              <div className="table-scroll overflow-x-auto">
-                <table className="w-full min-w-[980px] text-left text-sm">
-                  <thead className="bg-neutral-950 text-white">
-                    <tr>
-                      <Th>Klant</Th>
-                      <Th>Factuur</Th>
-                      <Th>Bedrag</Th>
-                      <Th>Factuurdatum</Th>
-                      <Th>Vervaldatum</Th>
-                      <Th>Status</Th>
-                      <Th>Betaald J</Th>
-                      <Th>Data</Th>
-                      <Th>Actie</Th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-100">
-                    {filteredReceivables.map(({ item, index }) => {
-                      const matchingDoc = invoiceDocs.find((doc) => doc.invoiceNumber === item.invoice || doc.linkedInvoice === item.invoice);
-                      return (
-                        <tr key={`${item.client}-${item.invoice}`}>
-                          <Td className="font-semibold text-neutral-950">{item.client}</Td>
-                          <Td>{item.invoice}</Td>
-                          <Td>{euro.format(item.amount)}</Td>
-                          <Td>{item.invoiceDate || "-"}</Td>
-                          <Td>{item.dueDate || "-"}</Td>
-                          <Td>
-                            <Select
-                              value={item.status}
-                              onChange={(event) =>
-                                setReceivables((current) => updateIndex(current, index, { status: event.target.value }))
-                              }
-                            >
-                              <option>in behandeling</option>
-                              <option>Betaald</option>
-                              <option>Open</option>
-                            </Select>
-                          </Td>
-                          <Td>
-                            <PaidSelect
-                              value={item.paid}
-                              onChange={(paid) =>
-                                setReceivables((current) =>
-                                  updateIndex(current, index, {
-                                    paid,
-                                    status: paid === "NEE" ? "in behandeling" : "Betaald",
-                                  }),
-                                )
-                              }
-                            />
-                          </Td>
-                          <Td>
-                            {matchingDoc ? (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedDocId(matchingDoc.id);
-                                  setTab("automation");
-                                }}
-                              >
-                                <Eye size={16} />
-                                Bekijk
-                              </Button>
-                            ) : (
-                              <Badge tone="warn">Geen PDF</Badge>
-                            )}
-                          </Td>
-                          <Td className="max-w-[260px] truncate">{item.action || "-"}</Td>
-                        </tr>
-                      );
-                    })}
-                    <tr className="bg-neutral-50">
-                      <Td>
-                        <Input
-                          value={newReceivable.client}
-                          onChange={(event) => setNewReceivable((current) => ({ ...current, client: event.target.value }))}
-                          placeholder="Klant"
+              <div className="ev-invoice-ledger-columns" aria-hidden="true">
+                <span>Relatie & factuur</span>
+                <span>Bedrag & deadline</span>
+                <span>Behandeling</span>
+                <span>Betaald</span>
+                <span>Bewijs</span>
+              </div>
+
+              <div className="ev-invoice-ledger-body">
+                {invoiceLedgerView === "payables" && filteredPayables.map(({ item, index }) => {
+                  const matchingDoc = invoiceDocs.find((doc) => doc.invoiceNumber === item.invoice || doc.linkedInvoice === item.invoice);
+                  return (
+                    <article className="ev-invoice-row" key={`${item.company}-${item.invoice}`}>
+                      <div className="ev-invoice-identity">
+                        <span className="ev-invoice-avatar"><Building2 size={17} /></span>
+                        <div>
+                          <strong>{item.company}</strong>
+                          <span>{item.invoice}</span>
+                          {item.note && <small title={item.note}>{item.note}</small>}
+                        </div>
+                      </div>
+                      <div className="ev-invoice-money">
+                        <strong>{euro.format(item.amount)}</strong>
+                        <span><CalendarClock size={14} /> {item.deadline || "Geen deadline"}</span>
+                      </div>
+                      <div className="ev-invoice-treatment">
+                        <Badge tone={statusTone(item.priority)}>{item.priority}</Badge>
+                        <Select
+                          aria-label={`Status ${item.company}`}
+                          value={item.status}
+                          onChange={(event) => setPayables((current) => updateIndex(current, index, { status: event.target.value }))}
+                        >
+                          <option>OPEN</option>
+                          <option>Open</option>
+                          <option>Betaald</option>
+                          <option>in behandeling</option>
+                        </Select>
+                      </div>
+                      <div className="ev-invoice-paid">
+                        <small>Kolom H</small>
+                        <PaidSelect
+                          value={item.paid}
+                          onChange={(paid) => setPayables((current) => updateIndex(current, index, {
+                            paid,
+                            status: paid === "NEE" ? "OPEN" : "Betaald",
+                          }))}
                         />
-                      </Td>
-                      <Td>
-                        <Input
-                          value={newReceivable.invoice}
-                          onChange={(event) => setNewReceivable((current) => ({ ...current, invoice: event.target.value }))}
-                          placeholder="Factuurnummer te ontvangen"
+                      </div>
+                      <div className="ev-invoice-document-action">
+                        {matchingDoc ? (
+                          <Button variant="secondary" size="sm" onClick={() => {
+                            setSelectedDocId(matchingDoc.id);
+                            setTab("automation");
+                          }}>
+                            <Eye size={16} /> Dossier
+                          </Button>
+                        ) : (
+                          <Button variant="ghost" size="sm" onClick={() => {
+                            setNewDocument((current) => ({ ...current, type: "te-betalen", relation: item.company, invoiceNumber: item.invoice, amount: String(item.amount), dueDate: item.deadline }));
+                            setTab("automation");
+                          }}>
+                            <FilePlus2 size={16} /> PDF toevoegen
+                          </Button>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+
+                {invoiceLedgerView === "receivables" && filteredReceivables.map(({ item, index }) => {
+                  const matchingDoc = invoiceDocs.find((doc) => doc.invoiceNumber === item.invoice || doc.linkedInvoice === item.invoice);
+                  return (
+                    <article className="ev-invoice-row" key={`${item.client}-${item.invoice}`}>
+                      <div className="ev-invoice-identity">
+                        <span className="ev-invoice-avatar"><UserRound size={17} /></span>
+                        <div>
+                          <strong>{item.client}</strong>
+                          <span>{item.invoice}</span>
+                          {item.action && <small title={item.action}>{item.action}</small>}
+                        </div>
+                      </div>
+                      <div className="ev-invoice-money">
+                        <strong>{euro.format(item.amount)}</strong>
+                        <span><CalendarClock size={14} /> {item.dueDate || "Geen vervaldatum"}</span>
+                      </div>
+                      <div className="ev-invoice-treatment">
+                        <Badge tone={statusTone(item.status)}>{item.status}</Badge>
+                        <Select
+                          aria-label={`Status ${item.client}`}
+                          value={item.status}
+                          onChange={(event) => setReceivables((current) => updateIndex(current, index, { status: event.target.value }))}
+                        >
+                          <option>in behandeling</option>
+                          <option>Betaald</option>
+                          <option>Open</option>
+                        </Select>
+                      </div>
+                      <div className="ev-invoice-paid">
+                        <small>Kolom J</small>
+                        <PaidSelect
+                          value={item.paid}
+                          onChange={(paid) => setReceivables((current) => updateIndex(current, index, {
+                            paid,
+                            status: paid === "NEE" ? "in behandeling" : "Betaald",
+                          }))}
                         />
-                      </Td>
-                      <Td>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={newReceivable.amount}
-                          onChange={(event) => setNewReceivable((current) => ({ ...current, amount: event.target.value }))}
-                          placeholder="Bedrag te ontvangen"
-                        />
-                      </Td>
-                      <Td>{today}</Td>
-                      <Td>
-                        <Input
-                          value={newReceivable.dueDate}
-                          onChange={(event) => setNewReceivable((current) => ({ ...current, dueDate: event.target.value }))}
-                          placeholder="Vervaldatum"
-                        />
-                      </Td>
-                      <Td>in behandeling</Td>
-                      <Td><Badge tone="danger">NEE</Badge></Td>
-                      <Td><Badge tone="warn">Upload</Badge></Td>
-                      <Td>
-                        <Button variant="accent" size="sm" onClick={addReceivable}>
-                          <Plus size={16} />
-                          Toevoegen
-                        </Button>
-                      </Td>
-                    </tr>
-                  </tbody>
-                </table>
+                      </div>
+                      <div className="ev-invoice-document-action">
+                        {matchingDoc ? (
+                          <Button variant="secondary" size="sm" onClick={() => {
+                            setSelectedDocId(matchingDoc.id);
+                            setTab("automation");
+                          }}>
+                            <Eye size={16} /> Dossier
+                          </Button>
+                        ) : (
+                          <Button variant="ghost" size="sm" onClick={() => {
+                            setNewDocument((current) => ({ ...current, type: "te-ontvangen", relation: item.client, invoiceNumber: item.invoice, amount: String(item.amount), dueDate: item.dueDate }));
+                            setTab("automation");
+                          }}>
+                            <FilePlus2 size={16} /> PDF toevoegen
+                          </Button>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+
+                {((invoiceLedgerView === "payables" && !filteredPayables.length) ||
+                  (invoiceLedgerView === "receivables" && !filteredReceivables.length)) && (
+                  <div className="ev-invoice-empty">Geen facturen gevonden voor deze zoekopdracht.</div>
+                )}
+              </div>
+
+              <div className="ev-invoice-add">
+                <div className="ev-invoice-add-title">
+                  <Plus size={17} />
+                  <div>
+                    <strong>{invoiceLedgerView === "payables" ? "Nieuwe te betalen factuur" : "Nieuwe te ontvangen factuur"}</strong>
+                    <span>Voeg de basis toe; het bewijsstuk kan daarna worden gekoppeld.</span>
+                  </div>
+                </div>
+                {invoiceLedgerView === "payables" ? (
+                  <div className="ev-invoice-add-fields">
+                    <Input value={newPayable.company} onChange={(event) => setNewPayable((current) => ({ ...current, company: event.target.value }))} placeholder="Leverancier" />
+                    <Input value={newPayable.invoice} onChange={(event) => setNewPayable((current) => ({ ...current, invoice: event.target.value }))} placeholder="Factuurnummer" />
+                    <Input type="number" step="0.01" value={newPayable.amount} onChange={(event) => setNewPayable((current) => ({ ...current, amount: event.target.value }))} placeholder="Bedrag" />
+                    <Input type="date" value={newPayable.deadline} onChange={(event) => setNewPayable((current) => ({ ...current, deadline: event.target.value }))} aria-label="Deadline" />
+                    <Button variant="accent" onClick={addPayable}><Plus size={16} /> Toevoegen</Button>
+                  </div>
+                ) : (
+                  <div className="ev-invoice-add-fields">
+                    <Input value={newReceivable.client} onChange={(event) => setNewReceivable((current) => ({ ...current, client: event.target.value }))} placeholder="Klant" />
+                    <Input value={newReceivable.invoice} onChange={(event) => setNewReceivable((current) => ({ ...current, invoice: event.target.value }))} placeholder="Factuurnummer" />
+                    <Input type="number" step="0.01" value={newReceivable.amount} onChange={(event) => setNewReceivable((current) => ({ ...current, amount: event.target.value }))} placeholder="Bedrag" />
+                    <Input type="date" value={newReceivable.dueDate} onChange={(event) => setNewReceivable((current) => ({ ...current, dueDate: event.target.value }))} aria-label="Vervaldatum" />
+                    <Button variant="accent" onClick={addReceivable}><Plus size={16} /> Toevoegen</Button>
+                  </div>
+                )}
               </div>
             </Card>
           </section>
@@ -4356,23 +4319,23 @@ function PaidSelect({
   const paid = normalizePaid(value);
 
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <Button
+    <div className="ev-paid-toggle" role="group" aria-label="Betaalstatus">
+      <button
         type="button"
-        variant={paid === "JA" || paid === "JA (termijn)" ? "accent" : "secondary"}
-        size="sm"
+        className={cn((paid === "JA" || paid === "JA (termijn)") && "is-paid")}
+        aria-pressed={paid === "JA" || paid === "JA (termijn)"}
         onClick={() => onChange("JA")}
       >
         JA
-      </Button>
-      <Button
+      </button>
+      <button
         type="button"
-        variant={paid === "NEE" ? "danger" : "secondary"}
-        size="sm"
+        className={cn(paid === "NEE" && "is-unpaid")}
+        aria-pressed={paid === "NEE"}
         onClick={() => onChange("NEE")}
       >
         NEE
-      </Button>
+      </button>
     </div>
   );
 }
