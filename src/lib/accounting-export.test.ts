@@ -27,7 +27,7 @@ describe("branded accounting exports", () => {
 
   it("builds a complete ZIP with invoice and payroll evidence plus a missing-evidence report", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) => {
-      if (String(url).includes("invoice.pdf")) return new Response(new Blob(["invoice"]), { status: 200 });
+      if (String(url).includes("invoice.pdf")) return new Response("invoice", { status: 200 });
       return new Response("not found", { status: 404 });
     }));
     const input: AccountantExportInput = {

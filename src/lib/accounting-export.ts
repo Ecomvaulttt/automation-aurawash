@@ -110,7 +110,7 @@ export async function createAccountantPackage(input: AccountantExportInput) {
     try {
       const response = await fetch(previewUrl);
       if (!response.ok) throw new Error(String(response.status));
-      zip.file(`bewijsstukken/${folder}/${safeName(id)}-${safeName(fileName)}`, await response.blob());
+      zip.file(`bewijsstukken/${folder}/${safeName(id)}-${safeName(fileName)}`, new Uint8Array(await response.arrayBuffer()));
     } catch {
       missingEvidence.push(`${id}: ${fileName}`);
     }
