@@ -36,7 +36,7 @@ export function SecurityWall({ children }: { children: ReactNode }) {
   const authPreview = auth.mode === "demo"
     ? new URLSearchParams(window.location.search).get("auth-preview")
     : null;
-  const previewMode = authPreview === "login";
+  const previewMode = authPreview === "login" || import.meta.env.VITE_REQUIRE_DEMO_LOGIN === "true";
   const [email, setEmail] = useState(previewMode ? demoLoginEmail : "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);

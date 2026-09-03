@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .netlify/
+.playwright-cli/
 qa-screenshots/
 .env
 .env.*
