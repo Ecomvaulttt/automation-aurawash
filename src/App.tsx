@@ -7,7 +7,9 @@ import {
   Bot,
   Building2,
   CalendarClock,
+  CalendarDays,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   ClipboardList,
   CreditCard,
@@ -71,6 +73,14 @@ import {
 import { downloadBlob, downloadFile, ExportRow, toCsv } from "./lib/export";
 import { createInvoicePdf, downloadAccountantPackage } from "./lib/accounting-export";
 import { parseAuraWorkbook, parseBankFile } from "./lib/imports";
+import {
+  availableInvoiceMonths,
+  invoiceAmounts,
+  invoiceReviewStatus,
+  monthLabel,
+  monthlyInvoiceSummary,
+} from "./lib/invoice-accounting";
+import { loadLocalDocument, localDocumentPath, removeLocalDocument, saveLocalDocument } from "./lib/local-documents";
 import { deleteWorkspaceDocument, syncWorkspaceInvoices, uploadBankStatement, uploadWorkspaceDocument } from "./lib/platform-files";
 import { cn } from "./lib/utils";
 import { PlatformAdminCenter } from "./platform/admin/PlatformAdminCenter";
@@ -97,6 +107,7 @@ const defaultPayrollEmployee = samplePayrollDocs[0]?.employee ?? initialSalaries
 type Tab = "onboarding" | "overzicht" | "loonstroken" | "instanties" | "facturen" | "automation" | "email" | "admin";
 type ThemeMode = "light" | "dark";
 type PaidValue = "JA" | "NEE" | "JA (termijn)";
+type InvoiceReviewStatus = "Controle" | "Goedgekeurd" | "Afgekeurd";
 type Balance = (typeof initialBalances)[number];
 type FixedCost = (typeof initialFixedCosts)[number];
 type DocumentType = InvoiceDocument["type"];
@@ -192,6 +203,21 @@ type InvoiceDraft = {
   amount: string;
   dueDate: string;
 };
+
+type InvoiceUploadDraft = {
+  type: DocumentType;
+  relation: string;
+  invoiceNumber: string;
+  amountExVat: string;
+  amountIncVat: string;
+  invoiceDate: string;
+  dueDate: string;
+  customerEmail: string;
+};
+
+type InvoiceLedgerEntry =
+  | { direction: "payable"; item: Payable; index: number }
+  | { direction: "receivable"; item: Receivable; index: number };
 
 type FinancialMetric = {
   key: MetricKey;
@@ -302,6 +328,13 @@ type ReminderItem = {
 };
 
 type OperationNotice = { tone: "good" | "warn" | "danger"; message: string };
+type ConfirmationRequest = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  tone?: "default" | "danger";
+  onConfirm: () => void;
+};
 
 function loadStored<T>(key: string, fallback: T): T {
   try {
@@ -591,7 +624,9 @@ function App() {
   const demoMode = auth.mode === "demo";
   const [tab, setTab] = useState<Tab>("overzicht");
   const [query, setQuery] = useState("");
-  const [invoiceLedgerView, setInvoiceLedgerView] = useState<"payables" | "receivables">("payables");
+  const [invoiceLedgerView, setInvoiceLedgerView] = useState<"payables" | "receivables" | "review">("review");
+  const [invoiceMonth, setInvoiceMonth] = useStoredState("ecomvault-invoice-month", "latest", true);
+  const [invoiceProfitTargets, setInvoiceProfitTargets] = useStoredState<Record<string, number>>("ecomvault-invoice-profit-targets", {}, true);
   const [theme, setTheme] = useStoredState<ThemeMode>("ecomvault-theme", "light", true);
   const [periodView, setPeriodView] = useStoredState<PeriodView>("ecomvault-period-view", "maand", true);
   const [selectedMetric, setSelectedMetric] = useStoredState<MetricKey>("ecomvault-selected-metric", "cash", true);
@@ -630,15 +665,17 @@ function App() {
   const [selectedPayrollMonth, setSelectedPayrollMonth] = useStoredState("ecomvault-payroll-month", "Alle maanden");
   const [newBalance, setNewBalance] = useState({ label: "", amount: "" });
   const [newSalary, setNewSalary] = useState({ name: "", total: "" });
-  const [newPayable, setNewPayable] = useState({ company: "", invoice: "", amount: "", deadline: "" });
-  const [newReceivable, setNewReceivable] = useState({ client: "", invoice: "", amount: "", dueDate: "" });
+  const [newPayable, setNewPayable] = useState({ company: "", invoice: "", amountExVat: "", amountIncVat: "", invoiceDate: today, deadline: "" });
+  const [newReceivable, setNewReceivable] = useState({ client: "", invoice: "", amountExVat: "", amountIncVat: "", invoiceDate: today, dueDate: "" });
   const [newTax, setNewTax] = useState({ type: "", amount: "", deadline: "" });
   const [selectedDocId, setSelectedDocId] = useState(demoMode ? sampleInvoiceDocuments[0]?.id ?? "" : "");
-  const [newDocument, setNewDocument] = useState({
+  const [newDocument, setNewDocument] = useState<InvoiceUploadDraft>({
     type: "te-betalen" as DocumentType,
     relation: "",
     invoiceNumber: "",
-    amount: "",
+    amountExVat: "",
+    amountIncVat: "",
+    invoiceDate: today,
     dueDate: "",
     customerEmail: "",
   });
@@ -678,9 +715,11 @@ function App() {
   ]);
   const [operationNotice, setOperationNotice] = useState<OperationNotice | null>(null);
   const [operationBusy, setOperationBusy] = useState(false);
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const [productionHydrated, setProductionHydrated] = useState(auth.mode === "demo");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const invoiceFileInputRef = useRef<HTMLInputElement>(null);
+  const pendingInvoiceUploadRef = useRef<InvoiceUploadDraft | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const bankInputRef = useRef<HTMLInputElement>(null);
   const workbookInputRef = useRef<HTMLInputElement>(null);
@@ -703,9 +742,46 @@ function App() {
       "ecomvault-payroll-employee",
       "ecomvault-payroll-month",
       "ecomvault-invoice-draft",
+      "ecomvault-invoice-profit-targets",
       "aurawash-email-draft",
     ].forEach((key) => window.localStorage.removeItem(key));
   }, [auth.mode]);
+
+  useEffect(() => {
+    if (!demoMode) return;
+    let active = true;
+    const previewUrls: string[] = [];
+
+    void (async () => {
+      const hydrate = async <T extends { storagePath?: string; previewUrl?: string }>(documents: T[]) =>
+        Promise.all(documents.map(async (document) => {
+          if (!document.storagePath?.startsWith("indexeddb:")) return document;
+          const blob = await loadLocalDocument(document.storagePath);
+          if (!blob || !active) return { ...document, previewUrl: undefined };
+          const previewUrl = URL.createObjectURL(blob);
+          previewUrls.push(previewUrl);
+          return { ...document, previewUrl };
+        }));
+
+      setInvoiceDocs((current) => {
+        void hydrate(current).then((documents) => {
+          if (active) setInvoiceDocs(documents);
+        });
+        return current;
+      });
+      setPayrollDocs((current) => {
+        void hydrate(current).then((documents) => {
+          if (active) setPayrollDocs(documents);
+        });
+        return current;
+      });
+    })();
+
+    return () => {
+      active = false;
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [demoMode]);
 
   useEffect(() => {
     if (auth.mode !== "production") return;
@@ -725,7 +801,7 @@ function App() {
         : snapshotQuery.is("location_id", null);
       const invoiceQuery = client
         .from("invoices")
-        .select("id, direction, relation_name, invoice_number, amount, invoice_date, due_date, paid, status, priority, notes, document_id")
+        .select("id, direction, relation_name, invoice_number, amount, amount_ex_vat, amount_inc_vat, tax_amount, vat_reclaimable, invoice_date, due_date, paid, status, priority, notes, document_id")
         .eq("organization_id", activeWorkspace.organizationId)
         .is("deleted_at", null);
       const documentQuery = client
@@ -772,6 +848,9 @@ function App() {
       if (snapshot?.automationSettings && typeof snapshot.automationSettings === "object") {
         setAutomationSettings(snapshot.automationSettings as AutomationSettings);
       }
+      if (snapshot?.invoiceProfitTargets && typeof snapshot.invoiceProfitTargets === "object") {
+        setInvoiceProfitTargets(snapshot.invoiceProfitTargets as Record<string, number>);
+      }
 
       const paidLabel = (value: string): PaidValue => value === "yes" ? "JA" : value === "installment" ? "JA (termijn)" : "NEE";
       const invoiceRows = (invoiceResult.data ?? []) as Array<Record<string, unknown>>;
@@ -779,9 +858,15 @@ function App() {
         company: String(row.relation_name ?? "Onbekend"),
         invoice: String(row.invoice_number ?? ""),
         amount: Number(row.amount ?? 0),
+        amountExVat: Number(row.amount_ex_vat ?? 0),
+        amountIncVat: Number(row.amount_inc_vat ?? row.amount ?? 0),
+        vatAmount: Number(row.tax_amount ?? 0),
+        invoiceDate: String(row.invoice_date ?? ""),
         deadline: String(row.due_date ?? ""),
         priority: String(row.priority ?? "normaal"),
         status: row.status === "paid" ? "Betaald" : row.status === "approved" ? "Goedgekeurd" : "Controle",
+        reviewStatus: row.status === "rejected" ? "Afgekeurd" : row.status === "review_required" ? "Controle" : "Goedgekeurd",
+        vatReclaimable: row.vat_reclaimable !== false,
         note: String(row.notes ?? ""),
         paid: paidLabel(String(row.paid ?? "no")),
         documentIds: row.document_id ? [String(row.document_id)] : [],
@@ -790,9 +875,13 @@ function App() {
         client: String(row.relation_name ?? "Onbekend"),
         invoice: String(row.invoice_number ?? ""),
         amount: Number(row.amount ?? 0),
+        amountExVat: Number(row.amount_ex_vat ?? 0),
+        amountIncVat: Number(row.amount_inc_vat ?? row.amount ?? 0),
+        vatAmount: Number(row.tax_amount ?? 0),
         invoiceDate: String(row.invoice_date ?? ""),
         dueDate: String(row.due_date ?? ""),
         status: row.status === "paid" ? "Betaald" : row.status === "approved" ? "Goedgekeurd" : "Controle",
+        reviewStatus: row.status === "rejected" ? "Afgekeurd" : row.status === "review_required" ? "Controle" : "Goedgekeurd",
         action: String(row.notes ?? ""),
         paid: paidLabel(String(row.paid ?? "no")),
         documentIds: row.document_id ? [String(row.document_id)] : [],
@@ -828,8 +917,13 @@ function App() {
           fileName: String(row.file_name),
           mimeType: String(row.mime_type),
           receivedAt: String(row.received_at ?? "").slice(0, 10),
+          invoiceDate: String(metadata.invoice_date ?? ""),
           dueDate: String(metadata.due_date ?? ""),
           amount: Number(metadata.amount ?? 0),
+          amountExVat: Number(metadata.amount_ex_vat ?? 0),
+          amountIncVat: Number(metadata.amount_inc_vat ?? metadata.amount ?? 0),
+          vatAmount: Number(metadata.vat_amount ?? 0),
+          vatReclaimable: metadata.vat_reclaimable !== false,
           paid: "NEE" as const,
           status: row.status === "approved" ? "Goedgekeurd" as const : row.status === "rejected" ? "Afgekeurd" as const : "Controle" as const,
           category: type,
@@ -887,7 +981,7 @@ function App() {
       const { data: existing } = await scoped.maybeSingle();
       const payload = {
         schema_version: 1,
-        data: { balances, salaries, taxes, fixedCosts, payables, receivables, payrollDocs, invoiceDocs, clientProfile, automationSettings },
+        data: { balances, salaries, taxes, fixedCosts, payables, receivables, payrollDocs, invoiceDocs, clientProfile, automationSettings, invoiceProfitTargets },
       };
       if (existing?.id) await client.from("workspace_snapshots").update(payload).eq("id", existing.id);
       else await client.from("workspace_snapshots").insert({
@@ -925,6 +1019,7 @@ function App() {
     clientProfile,
     fixedCosts,
     invoiceDocs,
+    invoiceProfitTargets,
     payables,
     payrollDocs,
     productionHydrated,
@@ -1038,13 +1133,18 @@ function App() {
 
   const selectedFinancialMetric =
     financialMetrics.find((metric) => metric.key === selectedMetric) ?? financialMetrics[0];
-  const periodFactor = periodView === "jaar" ? 12 : periodView === "kwartaal" ? 3 : 1;
-  const chartRows = [
-    { label: "Nu", value: selectedFinancialMetric.value },
-    { label: "Vorige", value: Math.max(0, selectedFinancialMetric.value * 0.86) },
-    { label: periodLabel(periodView), value: selectedFinancialMetric.value * periodFactor },
-  ];
-  const chartMax = Math.max(...chartRows.map((row) => row.value), 1);
+  const metricBreakdown = (() => {
+    if (selectedMetric === "cash") return balances.map((item) => ({ label: item.label, value: item.amount }));
+    if (selectedMetric === "salary") {
+      if (dateRange.preset !== "total") return displayedPayrollDocs.map((item) => ({ label: `${item.employee} · ${item.period}`, value: item.net || item.gross }));
+      return activeSalaries.map((item) => ({ label: item.name, value: item.total }));
+    }
+    if (selectedMetric === "tax") return displayedTaxes.filter((item) => isOpen(`${item.status} ${item.paid}`)).map((item) => ({ label: item.type, value: item.amount }));
+    if (selectedMetric === "payables") return displayedPayables.filter((item) => isPaidNo(item.paid)).map((item) => ({ label: `${item.company} · ${item.invoice}`, value: item.amount }));
+    if (selectedMetric === "receivables") return displayedReceivables.filter((item) => isPaidNo(item.paid)).map((item) => ({ label: `${item.client} · ${item.invoice}`, value: item.amount }));
+    return fixedCosts.filter((item) => item.open > 0).map((item) => ({ label: item.company, value: item.open }));
+  })().sort((a, b) => b.value - a.value);
+  const metricBreakdownMax = Math.max(...metricBreakdown.map((item) => item.value), 1);
   const connectorChecklist = connectorStatus(automationSettings, clientProfile);
   const onboardingProgress = Math.round(
     (connectorChecklist.filter((item) => item.done).length / connectorChecklist.length) * 100,
@@ -1302,6 +1402,100 @@ function App() {
         .includes(query.toLowerCase()),
     );
 
+  const invoiceMonths = availableInvoiceMonths(payables, receivables);
+  const effectiveInvoiceMonth = invoiceMonth === "latest"
+    ? invoiceMonths[0] ?? today.slice(0, 7)
+    : invoiceMonth;
+  const invoiceMonthSummary = monthlyInvoiceSummary(payables, receivables, effectiveInvoiceMonth);
+  const selectedInvoiceMonthIndex = invoiceMonths.indexOf(effectiveInvoiceMonth);
+  const invoiceLedgerItems: InvoiceLedgerEntry[] = ([
+    ...filteredPayables.map(({ item, index }) => ({ direction: "payable" as const, item, index })),
+    ...filteredReceivables.map(({ item, index }) => ({ direction: "receivable" as const, item, index })),
+  ] as InvoiceLedgerEntry[]).filter((entry) => {
+    if (invoiceLedgerView === "payables") return entry.direction === "payable" && entry.item.invoiceDate?.slice(0, 7) === effectiveInvoiceMonth;
+    if (invoiceLedgerView === "receivables") return entry.direction === "receivable" && entry.item.invoiceDate?.slice(0, 7) === effectiveInvoiceMonth;
+    return invoiceReviewStatus(entry.item) === "Controle";
+  });
+  const selectedInvoicePreview = invoiceDocs.find((document) => document.id === selectedDocId);
+
+  function selectAdjacentInvoiceMonth(direction: -1 | 1) {
+    if (!invoiceMonths.length) return;
+    const currentIndex = selectedInvoiceMonthIndex < 0 ? 0 : selectedInvoiceMonthIndex;
+    const nextIndex = Math.min(invoiceMonths.length - 1, Math.max(0, currentIndex + direction));
+    setInvoiceMonth(invoiceMonths[nextIndex]);
+  }
+
+  function requestConfirmation(
+    title: string,
+    message: string,
+    confirmLabel: string,
+    onConfirm: () => void,
+    tone: ConfirmationRequest["tone"] = "default",
+  ) {
+    setConfirmation({
+      title,
+      message,
+      confirmLabel,
+      tone,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmation(null);
+      },
+    });
+  }
+
+  function confirmPaidChange(label: string, current: string, paid: PaidValue, onConfirm: () => void) {
+    if (normalizePaid(current) === paid) return;
+    requestConfirmation(
+      paid === "JA" ? "Factuur als betaald markeren?" : "Factuur als niet betaald markeren?",
+      `${label} wordt na bevestiging direct opnieuw verwerkt in het openstaande saldo. Weet je dit zeker?`,
+      paid === "JA" ? "Ja, markeer betaald" : "Ja, markeer niet betaald",
+      onConfirm,
+      paid === "NEE" ? "danger" : "default",
+    );
+  }
+
+  function confirmReviewChange(label: string, reviewStatus: InvoiceReviewStatus, onConfirm: () => void) {
+    requestConfirmation(
+      reviewStatus === "Goedgekeurd" ? "Factuur goedkeuren?" : reviewStatus === "Afgekeurd" ? "Factuur afkeuren?" : "Terugzetten naar controle?",
+      `${label} ${reviewStatus === "Goedgekeurd" ? "gaat meetellen in de maandcijfers" : "telt niet mee in de maandcijfers"}. Weet je dit zeker?`,
+      reviewStatus === "Goedgekeurd" ? "Ja, goedkeuren" : reviewStatus === "Afgekeurd" ? "Ja, afkeuren" : "Ja, terugzetten",
+      onConfirm,
+      reviewStatus === "Afgekeurd" ? "danger" : "default",
+    );
+  }
+
+  function beginInvoiceUpload(draft: InvoiceUploadDraft) {
+    pendingInvoiceUploadRef.current = draft;
+    invoiceFileInputRef.current?.click();
+  }
+
+  function updatePayableAmount(index: number, field: "ex" | "inc", value: string) {
+    const parsed = Number(value);
+    const amounts = field === "ex"
+      ? invoiceAmounts({ amount: 0, amountExVat: Number.isFinite(parsed) ? parsed : 0 })
+      : invoiceAmounts({ amount: Number.isFinite(parsed) ? parsed : 0, amountIncVat: Number.isFinite(parsed) ? parsed : 0 });
+    setPayables((current) => updateIndex(current, index, {
+      amount: amounts.incVat,
+      amountExVat: amounts.exVat,
+      vatAmount: amounts.vat,
+      amountIncVat: amounts.incVat,
+    }));
+  }
+
+  function updateReceivableAmount(index: number, field: "ex" | "inc", value: string) {
+    const parsed = Number(value);
+    const amounts = field === "ex"
+      ? invoiceAmounts({ amount: 0, amountExVat: Number.isFinite(parsed) ? parsed : 0 })
+      : invoiceAmounts({ amount: Number.isFinite(parsed) ? parsed : 0, amountIncVat: Number.isFinite(parsed) ? parsed : 0 });
+    setReceivables((current) => updateIndex(current, index, {
+      amount: amounts.incVat,
+      amountExVat: amounts.exVat,
+      vatAmount: amounts.vat,
+      amountIncVat: amounts.incVat,
+    }));
+  }
+
   async function handleFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
@@ -1334,8 +1528,10 @@ function App() {
             previewUrl: uploaded.previewUrl,
           };
         }
+        const documentId = `payroll-${crypto.randomUUID()}-${index}`;
+        const storagePath = await saveLocalDocument(documentId, file);
         return {
-          id: `${Date.now()}-${index}`,
+          id: documentId,
           employee: selectedEmployee,
           period,
           fileName: file.name,
@@ -1343,6 +1539,7 @@ function App() {
           status: "Controle",
           gross: 0,
           net: 0,
+          storagePath,
           previewUrl: URL.createObjectURL(file),
         };
       }));
@@ -1361,27 +1558,39 @@ function App() {
   async function handleInvoiceFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
+    const uploadDraft = pendingInvoiceUploadRef.current ?? newDocument;
+    pendingInvoiceUploadRef.current = null;
     setOperationBusy(true);
     setOperationNotice(null);
     try {
       const additions = await Promise.all(files.map(async (file, index): Promise<InvoiceDocument> => {
-        const invoiceNumber = newDocument.invoiceNumber.trim() || file.name.replace(/\.[^.]+$/, "");
-        const relation = newDocument.relation.trim() || "Onbekend";
-        const amount = Number(newDocument.amount);
-        const type = newDocument.type;
-        const safeAmount = Number.isNaN(amount) ? 0 : amount;
+        const invoiceNumber = uploadDraft.invoiceNumber.trim() || file.name.replace(/\.[^.]+$/, "");
+        const relation = uploadDraft.relation.trim() || "Onbekend";
+        const amounts = invoiceAmounts({
+          amount: Number(uploadDraft.amountIncVat),
+          amountExVat: Number(uploadDraft.amountExVat),
+          amountIncVat: Number(uploadDraft.amountIncVat),
+        });
+        const type = uploadDraft.type;
+        const documentId = `uploaded-doc-${crypto.randomUUID()}-${index}`;
         const uploaded = auth.mode === "production"
           ? await uploadWorkspaceDocument(file, activeWorkspace, auth.user?.id, {
               type,
               relation,
               invoiceNumber,
-              amount: safeAmount,
-              dueDate: newDocument.dueDate.trim(),
-              customerEmail: newDocument.customerEmail.trim() || undefined,
+              amount: amounts.incVat,
+              amountExVat: amounts.exVat,
+              vatAmount: amounts.vat,
+              amountIncVat: amounts.incVat,
+              invoiceDate: uploadDraft.invoiceDate.trim(),
+              dueDate: uploadDraft.dueDate.trim(),
+              vatReclaimable: type === "te-betalen" || type === "vaste-last",
+              customerEmail: uploadDraft.customerEmail.trim() || undefined,
             })
           : null;
+        const storagePath = uploaded?.storagePath ?? await saveLocalDocument(documentId, file);
         return {
-          id: uploaded?.id ?? `uploaded-doc-${Date.now()}-${index}`,
+          id: uploaded?.id ?? documentId,
           type,
           source: "upload",
           direction: type === "te-betalen" || type === "vaste-last" ? "inkomend" : "uitgaand",
@@ -1389,22 +1598,89 @@ function App() {
           invoiceNumber,
           subject: `${relation} ${invoiceNumber}`,
           sender: type === "te-ontvangen" ? clientProfile.companyName : relation,
-          customerEmail: newDocument.customerEmail.trim() || undefined,
+          customerEmail: uploadDraft.customerEmail.trim() || undefined,
           fileName: file.name,
           mimeType: file.type || "application/pdf",
           receivedAt: today,
-          dueDate: newDocument.dueDate.trim(),
-          amount: safeAmount,
+          invoiceDate: uploadDraft.invoiceDate.trim(),
+          dueDate: uploadDraft.dueDate.trim(),
+          amount: amounts.incVat,
+          amountExVat: amounts.exVat,
+          vatAmount: amounts.vat,
+          amountIncVat: amounts.incVat,
+          vatReclaimable: type === "te-betalen" || type === "vaste-last",
           paid: "NEE",
           status: "Controle",
           category: type === "vaste-last" ? "Vaste lasten" : type === "loonstrook" ? "Loonstrook" : "Factuur",
           extractedText: "Handmatig geupload. Controleer bedrag, relatie, factuurnummer en vervaldatum.",
-          storagePath: uploaded?.storagePath,
+          storagePath,
           previewUrl: uploaded?.previewUrl ?? URL.createObjectURL(file),
           linkedInvoice: invoiceNumber,
         };
       }));
       setInvoiceDocs((current) => [...additions, ...current]);
+      for (const document of additions) {
+        if (document.type === "te-betalen" || document.type === "vaste-last") {
+          setPayables((current) => {
+            const existingIndex = current.findIndex((item) => item.invoice.toLowerCase() === document.invoiceNumber.toLowerCase());
+            const values: Payable = {
+              company: document.relation,
+              invoice: document.invoiceNumber,
+              invoiceDate: document.invoiceDate || "",
+              amount: document.amountIncVat ?? document.amount,
+              amountExVat: document.amountExVat,
+              vatAmount: document.vatAmount,
+              amountIncVat: document.amountIncVat ?? document.amount,
+              deadline: document.dueDate,
+              priority: "Middel",
+              status: "Controle",
+              reviewStatus: "Controle",
+              vatReclaimable: true,
+              note: "PDF handmatig geupload",
+              paid: "NEE",
+              documentIds: [document.id],
+            };
+            if (existingIndex < 0) return [values, ...current];
+            const existing = current[existingIndex];
+            return updateIndex(current, existingIndex, {
+              ...values,
+              reviewStatus: existing.reviewStatus ?? invoiceReviewStatus(existing),
+              status: existing.status,
+              paid: existing.paid,
+              documentIds: Array.from(new Set([...(existing.documentIds ?? []), document.id])),
+            });
+          });
+        } else if (document.type === "te-ontvangen") {
+          setReceivables((current) => {
+            const existingIndex = current.findIndex((item) => item.invoice.toLowerCase() === document.invoiceNumber.toLowerCase());
+            const values: Receivable = {
+              client: document.relation,
+              invoice: document.invoiceNumber,
+              invoiceDate: document.invoiceDate || today,
+              amount: document.amountIncVat ?? document.amount,
+              amountExVat: document.amountExVat,
+              vatAmount: document.vatAmount,
+              amountIncVat: document.amountIncVat ?? document.amount,
+              dueDate: document.dueDate,
+              status: "Controle",
+              reviewStatus: "Controle",
+              action: "Gegevens controleren en goedkeuren",
+              paid: "NEE",
+              customerEmail: document.customerEmail,
+              documentIds: [document.id],
+            };
+            if (existingIndex < 0) return [values, ...current];
+            const existing = current[existingIndex];
+            return updateIndex(current, existingIndex, {
+              ...values,
+              reviewStatus: existing.reviewStatus ?? invoiceReviewStatus(existing),
+              status: existing.status,
+              paid: existing.paid,
+              documentIds: Array.from(new Set([...(existing.documentIds ?? []), document.id])),
+            });
+          });
+        }
+      }
       setSelectedDocId(additions[0]?.id ?? selectedDocId);
       setOperationNotice({ tone: "good", message: `${additions.length} document${additions.length === 1 ? "" : "en"} toegevoegd en gekoppeld.` });
     } catch {
@@ -1496,6 +1772,7 @@ function App() {
     setOperationBusy(true);
     setOperationNotice(null);
     try {
+      const amounts = invoiceAmounts({ amount });
       const generated = await createInvoicePdf(clientProfile, invoiceDraft, today);
       downloadBlob(generated.filename, generated.blob);
       const file = new File([generated.blob], generated.filename, { type: "application/pdf" });
@@ -1505,13 +1782,19 @@ function App() {
             relation: invoiceDraft.client.trim(),
             invoiceNumber: invoiceDraft.invoiceNumber.trim(),
             amount,
+            amountExVat: amounts.exVat,
+            vatAmount: amounts.vat,
+            amountIncVat: amount,
+            invoiceDate: today,
             dueDate: invoiceDraft.dueDate,
             customerEmail: invoiceDraft.email.trim() || undefined,
             approved: true,
           })
         : null;
+      const localDocumentId = `generated-${crypto.randomUUID()}`;
+      const storagePath = uploaded?.storagePath ?? await saveLocalDocument(localDocumentId, generated.blob);
       const document: InvoiceDocument = {
-        id: uploaded?.id ?? `generated-${crypto.randomUUID()}`,
+        id: uploaded?.id ?? localDocumentId,
         type: "te-ontvangen",
         source: "upload",
         direction: "uitgaand",
@@ -1523,13 +1806,17 @@ function App() {
         fileName: generated.filename,
         mimeType: "application/pdf",
         receivedAt: today,
+        invoiceDate: today,
         dueDate: invoiceDraft.dueDate,
         amount,
+        amountExVat: amounts.exVat,
+        vatAmount: amounts.vat,
+        amountIncVat: amount,
         paid: "NEE",
         status: "Goedgekeurd",
         category: "Te ontvangen factuur",
         extractedText: `Klant: ${invoiceDraft.client.trim()}. Factuur: ${invoiceDraft.invoiceNumber.trim()}. Bedrag: ${euro.format(amount)}.`,
-        storagePath: uploaded?.storagePath,
+        storagePath,
         previewUrl: uploaded?.previewUrl ?? URL.createObjectURL(generated.blob),
         linkedInvoice: invoiceDraft.invoiceNumber.trim(),
       };
@@ -1539,9 +1826,13 @@ function App() {
         client: invoiceDraft.client.trim(),
         invoice: invoiceDraft.invoiceNumber.trim(),
         amount,
+        amountExVat: amounts.exVat,
+        vatAmount: amounts.vat,
+        amountIncVat: amount,
         invoiceDate: today,
         dueDate: invoiceDraft.dueDate,
         status: "Goedgekeurd",
+        reviewStatus: "Goedgekeurd",
         action: "Versturen en betaling opvolgen",
         paid: "NEE",
         customerEmail: invoiceDraft.email.trim() || undefined,
@@ -1660,7 +1951,50 @@ function App() {
   }
 
   function updateInvoiceDoc(id: string, patch: Partial<InvoiceDocument>) {
-    setInvoiceDocs((current) => current.map((doc) => (doc.id === id ? { ...doc, ...patch } : doc)));
+    const existing = invoiceDocs.find((doc) => doc.id === id);
+    if (!existing) return;
+    const next = { ...existing, ...patch };
+    const amounts = invoiceAmounts(next);
+    setInvoiceDocs((current) => current.map((doc) => (doc.id === id ? next : doc)));
+
+    if (next.type === "te-betalen" || next.type === "vaste-last") {
+      setPayables((current) => current.map((item) => (
+        item.documentIds?.includes(id) || item.invoice === existing.invoiceNumber
+          ? {
+              ...item,
+              company: next.relation,
+              invoice: next.invoiceNumber,
+              invoiceDate: next.invoiceDate || "",
+              deadline: next.dueDate,
+              amount: amounts.incVat,
+              amountExVat: amounts.exVat,
+              amountIncVat: amounts.incVat,
+              vatAmount: amounts.vat,
+              vatReclaimable: next.vatReclaimable !== false,
+              reviewStatus: ["Controle", "Goedgekeurd", "Afgekeurd"].includes(next.status) ? next.status as InvoiceReviewStatus : item.reviewStatus,
+              paid: next.paid,
+            }
+          : item
+      )));
+    } else if (next.type === "te-ontvangen") {
+      setReceivables((current) => current.map((item) => (
+        item.documentIds?.includes(id) || item.invoice === existing.invoiceNumber
+          ? {
+              ...item,
+              client: next.relation,
+              invoice: next.invoiceNumber,
+              invoiceDate: next.invoiceDate || "",
+              dueDate: next.dueDate,
+              amount: amounts.incVat,
+              amountExVat: amounts.exVat,
+              amountIncVat: amounts.incVat,
+              vatAmount: amounts.vat,
+              reviewStatus: ["Controle", "Goedgekeurd", "Afgekeurd"].includes(next.status) ? next.status as InvoiceReviewStatus : item.reviewStatus,
+              paid: next.paid,
+            }
+          : item
+      )));
+    }
   }
 
   async function removeInvoiceDoc(id: string) {
@@ -1675,6 +2009,9 @@ function App() {
         return;
       }
       setOperationBusy(false);
+    }
+    if (auth.mode === "demo" && document?.storagePath) {
+      await removeLocalDocument(document.storagePath);
     }
     setInvoiceDocs((current) => current.filter((doc) => doc.id !== id));
     if (selectedDocId === id) {
@@ -1700,6 +2037,9 @@ function App() {
         return;
       }
       setOperationBusy(false);
+    }
+    if (auth.mode === "demo" && document?.storagePath) {
+      await removeLocalDocument(document.storagePath);
     }
     setPayrollDocs((current) => current.filter((doc) => doc.id !== id));
   }
@@ -1772,41 +2112,67 @@ function App() {
   }
 
   function addPayable() {
-    const amount = Number(newPayable.amount);
-    if (!newPayable.company.trim() || Number.isNaN(amount)) return;
+    const amounts = invoiceAmounts({
+      amount: Number(newPayable.amountIncVat),
+      amountExVat: Number(newPayable.amountExVat),
+      amountIncVat: Number(newPayable.amountIncVat),
+    });
+    if (!newPayable.company.trim() || !newPayable.invoice.trim() || !newPayable.invoiceDate || amounts.incVat <= 0) {
+      setOperationNotice({ tone: "danger", message: "Vul leverancier, factuurnummer, factuurdatum en een geldig bedrag in." });
+      return;
+    }
     setPayables((current) => [
       ...current,
       {
         company: newPayable.company.trim(),
-        invoice: newPayable.invoice.trim() || "-",
-        amount,
+        invoice: newPayable.invoice.trim(),
+        invoiceDate: newPayable.invoiceDate,
+        amount: amounts.incVat,
+        amountExVat: amounts.exVat,
+        vatAmount: amounts.vat,
+        amountIncVat: amounts.incVat,
         deadline: newPayable.deadline.trim() || "-",
         priority: "Middel",
-        status: "OPEN",
+        status: "Controle",
+        reviewStatus: "Controle",
+        vatReclaimable: true,
         note: "",
         paid: "NEE",
       },
     ]);
-    setNewPayable({ company: "", invoice: "", amount: "", deadline: "" });
+    setNewPayable({ company: "", invoice: "", amountExVat: "", amountIncVat: "", invoiceDate: today, deadline: "" });
+    setOperationNotice({ tone: "good", message: "Inkoopfactuur toegevoegd aan de controle-inbox." });
   }
 
   function addReceivable() {
-    const amount = Number(newReceivable.amount);
-    if (!newReceivable.client.trim() || Number.isNaN(amount)) return;
+    const amounts = invoiceAmounts({
+      amount: Number(newReceivable.amountIncVat),
+      amountExVat: Number(newReceivable.amountExVat),
+      amountIncVat: Number(newReceivable.amountIncVat),
+    });
+    if (!newReceivable.client.trim() || !newReceivable.invoice.trim() || !newReceivable.invoiceDate || amounts.incVat <= 0) {
+      setOperationNotice({ tone: "danger", message: "Vul klant, factuurnummer, factuurdatum en een geldig bedrag in." });
+      return;
+    }
     setReceivables((current) => [
       ...current,
       {
         client: newReceivable.client.trim(),
-        invoice: newReceivable.invoice.trim() || "-",
-        amount,
-        invoiceDate: today,
+        invoice: newReceivable.invoice.trim(),
+        amount: amounts.incVat,
+        amountExVat: amounts.exVat,
+        vatAmount: amounts.vat,
+        amountIncVat: amounts.incVat,
+        invoiceDate: newReceivable.invoiceDate,
         dueDate: newReceivable.dueDate.trim(),
-        status: "in behandeling",
-        action: "opvolgen",
+        status: "Controle",
+        reviewStatus: "Controle",
+        action: "Gegevens controleren en PDF koppelen",
         paid: "NEE",
       },
     ]);
-    setNewReceivable({ client: "", invoice: "", amount: "", dueDate: "" });
+    setNewReceivable({ client: "", invoice: "", amountExVat: "", amountIncVat: "", invoiceDate: today, dueDate: "" });
+    setOperationNotice({ tone: "good", message: "Verkoopfactuur toegevoegd aan de controle-inbox." });
   }
 
   function resetToExcelStart() {
@@ -2089,6 +2455,15 @@ function App() {
 
   return (
     <main className="ev-canvas min-h-[100dvh] text-[#0B0B0C]" data-theme={theme}>
+      <input
+        ref={invoiceFileInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        multiple
+        className="hidden"
+        aria-label="Factuur PDF uploaden"
+        onChange={handleInvoiceFiles}
+      />
       <div className="ev-shell">
         <aside className="ev-sidebar">
           <div className="ev-sidebar-brand">
@@ -2413,7 +2788,7 @@ function App() {
               <Card id="setup-bank" className={cn("overflow-hidden ev-setup-target", setupFocus === "setup-bank" && "ev-setup-target-focus")}>
                 <SectionHeader title="Veilige bankflow" note="Zonder banklogins in het systeem" />
                 <div className="grid gap-4 p-5">
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <Preview label="Uploadritme" value={clientProfile.bankUploadCadence} />
                     <Preview label="Laatste upload" value={clientProfile.lastBankUpload || "Nog geen bankbestand"} />
                     <Preview label="Cashruimte" value={euro.format(cashCoverage)} />
@@ -2584,46 +2959,28 @@ function App() {
 
             <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
               <Card className="overflow-hidden">
-                <SectionHeader title={`${selectedFinancialMetric.title} analyse`} note={`${periodLabel(periodView)}weergave`} />
-                <div className="grid gap-5 p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                <SectionHeader title={`${selectedFinancialMetric.title} opgebouwd`} note={dateRangeLabel(dateRange)} />
+                <div className="ev-metric-breakdown">
+                  <div className="ev-metric-breakdown-total">
                     <div>
-                      <p className="flex items-center gap-2 text-sm font-medium text-neutral-500">
-                        <BarChart3 size={16} />
-                        Geselecteerde post
-                      </p>
-                      <p className="mt-1 text-3xl font-semibold tracking-[-0.02em] text-[#0B0B0C]">{euro.format(selectedFinancialMetric.value)}</p>
+                      <BarChart3 size={18} />
+                      <span>Werkelijk totaal binnen de gekozen periode</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 rounded-lg bg-[#0B0B0C] p-1">
-                      {(["maand", "kwartaal", "jaar"] as PeriodView[]).map((view) => (
-                        <button
-                          key={view}
-                          onClick={() => setPeriodView(view)}
-                          className={cn(
-                            "h-9 rounded-md px-3 text-sm font-semibold transition",
-                            periodView === view ? "bg-[#2D5BFF] text-white" : "text-[#F5F2ED]/70 hover:bg-white/10",
-                          )}
-                        >
-                          {periodLabel(view)}
-                        </button>
-                      ))}
-                    </div>
+                    <strong>{euro.format(selectedFinancialMetric.value)}</strong>
                   </div>
-                  <div className="grid gap-3">
-                    {chartRows.map((row) => (
-                      <div key={row.label} className="grid gap-2">
-                        <div className="flex items-center justify-between gap-3 text-sm">
-                          <span className="font-medium text-neutral-600">{row.label}</span>
-                          <span className="font-mono font-semibold text-[#0B0B0C]">{euro.format(row.value)}</span>
+                  <div className="ev-metric-breakdown-list">
+                    {metricBreakdown.slice(0, 6).map((row) => (
+                      <div key={row.label} className="ev-metric-breakdown-row">
+                        <div>
+                          <span title={row.label}>{row.label}</span>
+                          <strong>{euro.format(row.value)}</strong>
                         </div>
-                        <div className="h-4 overflow-hidden rounded-full bg-[#EAE6DE]">
-                          <div
-                            className="h-full rounded-full bg-[#2D5BFF]"
-                            style={{ width: `${clampPercent(row.value, chartMax)}%` }}
-                          />
-                        </div>
+                        <div aria-hidden="true"><span style={{ width: `${clampPercent(row.value, metricBreakdownMax)}%` }} /></div>
                       </div>
                     ))}
+                    {!metricBreakdown.length && (
+                      <div className="ev-metric-breakdown-empty">Geen posten gevonden binnen deze periode.</div>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -3286,13 +3643,34 @@ function App() {
                         }
                       />
                     </Field>
-                    <Field label="Bedrag">
+                    <Field label="Factuurdatum">
+                      <Input
+                        type="date"
+                        value={newDocument.invoiceDate}
+                        onChange={(event) =>
+                          setNewDocument((current) => ({ ...current, invoiceDate: event.target.value }))
+                        }
+                      />
+                    </Field>
+                    <Field label="Bedrag excl. btw">
                       <Input
                         type="number"
+                        min="0"
                         step="0.01"
-                        value={newDocument.amount}
+                        value={newDocument.amountExVat}
                         onChange={(event) =>
-                          setNewDocument((current) => ({ ...current, amount: event.target.value }))
+                          setNewDocument((current) => ({ ...current, amountExVat: event.target.value }))
+                        }
+                      />
+                    </Field>
+                    <Field label="Bedrag incl. btw">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={newDocument.amountIncVat}
+                        onChange={(event) =>
+                          setNewDocument((current) => ({ ...current, amountIncVat: event.target.value }))
                         }
                       />
                     </Field>
@@ -3316,15 +3694,7 @@ function App() {
                       placeholder="alleen nodig voor te ontvangen facturen"
                     />
                   </Field>
-                  <input
-                    ref={invoiceFileInputRef}
-                    className="hidden"
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg"
-                    multiple
-                    onChange={handleInvoiceFiles}
-                  />
-                  <Button variant="accent" onClick={() => invoiceFileInputRef.current?.click()}>
+                  <Button variant="accent" onClick={() => beginInvoiceUpload(newDocument)}>
                     <Upload size={18} />
                     PDF/document uploaden
                   </Button>
@@ -3444,12 +3814,36 @@ function App() {
                           onChange={(event) => updateInvoiceDoc(selectedDoc.id, { invoiceNumber: event.target.value })}
                         />
                       </Field>
-                      <Field label="Bedrag">
+                      <Field label="Factuurdatum">
+                        <Input
+                          type="date"
+                          value={selectedDoc.invoiceDate || ""}
+                          onChange={(event) => updateInvoiceDoc(selectedDoc.id, { invoiceDate: event.target.value })}
+                        />
+                      </Field>
+                      <Field label="Bedrag excl. btw">
                         <Input
                           type="number"
+                          min="0"
                           step="0.01"
-                          value={selectedDoc.amount}
-                          onChange={(event) => updateInvoiceDoc(selectedDoc.id, { amount: Number(event.target.value) })}
+                          value={invoiceAmounts(selectedDoc).exVat}
+                          onChange={(event) => {
+                            const amounts = invoiceAmounts({ amount: 0, amountExVat: Number(event.target.value) || 0 });
+                            updateInvoiceDoc(selectedDoc.id, { amount: amounts.incVat, amountExVat: amounts.exVat, vatAmount: amounts.vat, amountIncVat: amounts.incVat });
+                          }}
+                        />
+                      </Field>
+                      <Field label="Bedrag incl. btw">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={invoiceAmounts(selectedDoc).incVat}
+                          onChange={(event) => {
+                            const amount = Number(event.target.value) || 0;
+                            const amounts = invoiceAmounts({ amount, amountIncVat: amount });
+                            updateInvoiceDoc(selectedDoc.id, { amount: amounts.incVat, amountExVat: amounts.exVat, vatAmount: amounts.vat, amountIncVat: amounts.incVat });
+                          }}
                         />
                       </Field>
                       <Field label="Vervaldatum">
@@ -3460,28 +3854,25 @@ function App() {
                       </Field>
                       <Field label="Status">
                         <Select
-                          value={selectedDoc.status}
-                          onChange={(event) =>
-                            updateInvoiceDoc(selectedDoc.id, { status: event.target.value as InvoiceDocument["status"] })
-                          }
+                          value={["Goedgekeurd", "Afgekeurd"].includes(selectedDoc.status) ? selectedDoc.status : "Controle"}
+                          onChange={(event) => {
+                            const next = event.target.value as InvoiceReviewStatus;
+                            confirmReviewChange(`${selectedDoc.relation} · ${selectedDoc.invoiceNumber}`, next, () => updateInvoiceDoc(selectedDoc.id, { status: next }));
+                          }}
                         >
-                          <option>Nieuw</option>
                           <option>Controle</option>
                           <option>Goedgekeurd</option>
                           <option>Afgekeurd</option>
-                          <option>Betaald</option>
-                          <option>Niet betaald</option>
                         </Select>
                       </Field>
                       <Field label="Betaald">
                         <PaidSelect
                           value={selectedDoc.paid}
-                          onChange={(paid) =>
+                          onChange={(paid) => confirmPaidChange(`${selectedDoc.relation} · ${selectedDoc.invoiceNumber}`, selectedDoc.paid, paid, () =>
                             updateInvoiceDoc(selectedDoc.id, {
                               paid,
-                              status: paid === "NEE" ? "Niet betaald" : "Betaald",
-                            })
-                          }
+                            }),
+                          )}
                         />
                       </Field>
                     </div>
@@ -3607,214 +3998,239 @@ function App() {
                 <div className="ev-invoice-command-copy">
                   <span className="ev-section-icon"><ReceiptText size={18} /></span>
                   <div>
-                    <h2>Facturen</h2>
-                    <p>Controleer betalingen, deadlines en bewijsstukken vanuit één werkruimte.</p>
+                    <h2>Factuurbeheer</h2>
+                    <p>Werk per factuurdatum, controleer de boeking en houd het PDF-bewijs direct bij de regel.</p>
                   </div>
                 </div>
-                <div className="ev-invoice-search">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
-                  <Input className="pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Zoek op relatie of factuur" />
+                <div className="ev-invoice-command-actions">
+                  <div className="ev-invoice-search">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
+                    <Input className="pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Zoek relatie of factuurnummer…" />
+                  </div>
+                  <Button variant="accent" onClick={() => beginInvoiceUpload({
+                    type: "te-ontvangen",
+                    relation: "Onbekende klant",
+                    invoiceNumber: "",
+                    amountExVat: "",
+                    amountIncVat: "",
+                    invoiceDate: today,
+                    dueDate: "",
+                    customerEmail: "",
+                  })}>
+                    <Upload size={17} /> Verkoopfactuur uploaden
+                  </Button>
                 </div>
               </div>
-              <div className="ev-invoice-overview">
-                <button
-                  type="button"
-                  className={cn("ev-invoice-view", invoiceLedgerView === "payables" && "is-active")}
-                  onClick={() => setInvoiceLedgerView("payables")}
-                >
-                  <span>Te betalen</span>
-                  <strong>{euro.format(totals.openPayables)}</strong>
-                  <small>{openPayableItems.length} open · kolom H</small>
-                </button>
-                <button
-                  type="button"
-                  className={cn("ev-invoice-view", invoiceLedgerView === "receivables" && "is-active")}
-                  onClick={() => setInvoiceLedgerView("receivables")}
-                >
-                  <span>Te ontvangen</span>
-                  <strong>{euro.format(totals.expectedReceivables)}</strong>
-                  <small>{openReceivableItems.length} open · kolom J</small>
-                </button>
-                <div className="ev-invoice-health">
-                  <span>Bewijsdekking</span>
-                  <strong>{proofCoverage}%</strong>
-                  <small>{linkedDocumentCount} documenten gekoppeld</small>
+
+              <div className="ev-invoice-month-bar">
+                <div className="ev-invoice-month-nav">
+                  <button type="button" aria-label="Oudere factuurmaand" onClick={() => selectAdjacentInvoiceMonth(1)} disabled={selectedInvoiceMonthIndex < 0 || selectedInvoiceMonthIndex >= invoiceMonths.length - 1}>
+                    <ChevronLeft size={18} />
+                  </button>
+                  <label>
+                    <CalendarDays size={17} />
+                    <span>{monthLabel(effectiveInvoiceMonth)}</span>
+                    <input type="month" value={effectiveInvoiceMonth} onChange={(event) => setInvoiceMonth(event.target.value)} aria-label="Factuurmaand kiezen" />
+                  </label>
+                  <button type="button" aria-label="Nieuwere factuurmaand" onClick={() => selectAdjacentInvoiceMonth(-1)} disabled={selectedInvoiceMonthIndex <= 0}>
+                    <ChevronRight size={18} />
+                  </button>
                 </div>
+                <span>
+                  Alle cijfers gebruiken de factuurdatum
+                  {invoiceMonthSummary.missingInvoiceDateCount > 0 && ` · ${invoiceMonthSummary.missingInvoiceDateCount} datum${invoiceMonthSummary.missingInvoiceDateCount === 1 ? "" : "s"} ontbreekt`}
+                </span>
+              </div>
+
+              <div className="ev-invoice-month-summary">
+                <div><span>Omzet excl. btw</span><strong>{euro.format(invoiceMonthSummary.revenueExVat)}</strong><small>{euro.format(invoiceMonthSummary.revenueIncVat)} incl. btw</small></div>
+                <div><span>Kosten excl. btw</span><strong>{euro.format(invoiceMonthSummary.costsExVat)}</strong><small>{euro.format(invoiceMonthSummary.costsIncVat)} incl. btw</small></div>
+                <div className={cn(invoiceMonthSummary.resultExVat < 0 && "is-negative")}>
+                  <span>Resultaat</span><strong>{euro.format(invoiceMonthSummary.resultExVat)}</strong>
+                  <small>{invoiceProfitTargets[effectiveInvoiceMonth] > 0
+                    ? `${euro.format(Math.max(0, invoiceProfitTargets[effectiveInvoiceMonth] - invoiceMonthSummary.resultExVat))} tot winstdoel`
+                    : invoiceMonthSummary.breakEvenRemaining > 0 ? `${euro.format(invoiceMonthSummary.breakEvenRemaining)} tot break-even` : "Break-even bereikt"}</small>
+                </div>
+                <div className={cn(invoiceMonthSummary.vatBalance < 0 && "is-refund")}>
+                  <span>Btw-saldo</span><strong>{euro.format(Math.abs(invoiceMonthSummary.vatBalance))}</strong>
+                  <small>{invoiceMonthSummary.vatBalance > 0 ? "Te betalen" : invoiceMonthSummary.vatBalance < 0 ? "Terug te krijgen" : "In balans"}</small>
+                </div>
+              </div>
+
+              <details className="ev-profit-target">
+                <summary><Gauge size={15} /> Optioneel winstdoel instellen</summary>
+                <div>
+                  <Field label={`Winstdoel voor ${monthLabel(effectiveInvoiceMonth)}`}>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="100"
+                      value={invoiceProfitTargets[effectiveInvoiceMonth] || ""}
+                      placeholder="Geen doel ingesteld"
+                      onChange={(event) => {
+                        const value = Math.max(0, Number(event.target.value) || 0);
+                        setInvoiceProfitTargets((current) => ({ ...current, [effectiveInvoiceMonth]: value }));
+                      }}
+                    />
+                  </Field>
+                  <p>Dit doel is alleen een vergelijking en verandert omzet, kosten of resultaat nooit.</p>
+                </div>
+              </details>
+
+              <div className="ev-invoice-overview">
+                <button type="button" className={cn("ev-invoice-view", invoiceLedgerView === "review" && "is-active")} onClick={() => setInvoiceLedgerView("review")}>
+                  <span>Controle-inbox</span><strong>{payables.filter((item) => invoiceReviewStatus(item) === "Controle").length + receivables.filter((item) => invoiceReviewStatus(item) === "Controle").length}</strong><small>Eerst controleren, daarna meetellen</small>
+                </button>
+                <button type="button" className={cn("ev-invoice-view", invoiceLedgerView === "payables" && "is-active")} onClick={() => setInvoiceLedgerView("payables")}>
+                  <span>Te betalen</span><strong>{euro.format(totals.openPayables)}</strong><small>{openPayableItems.length} open · bron H</small>
+                </button>
+                <button type="button" className={cn("ev-invoice-view", invoiceLedgerView === "receivables" && "is-active")} onClick={() => setInvoiceLedgerView("receivables")}>
+                  <span>Te ontvangen</span><strong>{euro.format(totals.expectedReceivables)}</strong><small>{openReceivableItems.length} open · bron J</small>
+                </button>
+                <div className="ev-invoice-health"><span>PDF-dekking</span><strong>{proofCoverage}%</strong><small>{linkedDocumentCount} documenten gekoppeld</small></div>
               </div>
             </Card>
 
             <Card className="ev-invoice-ledger">
               <div className="ev-invoice-ledger-head">
                 <div>
-                  <span>{invoiceLedgerView === "payables" ? "Uitgaande verplichtingen" : "Inkomende betalingen"}</span>
-                  <h3>{invoiceLedgerView === "payables" ? "Te betalen facturen" : "Te ontvangen facturen"}</h3>
+                  <h3>{invoiceLedgerView === "review" ? "Te controleren" : invoiceLedgerView === "payables" ? "Te betalen facturen" : "Te ontvangen facturen"}</h3>
+                  <span>{invoiceLedgerItems.length} facturen zichtbaar</span>
                 </div>
-                <Badge tone={invoiceLedgerView === "payables" ? "warn" : "good"}>
-                  {invoiceLedgerView === "payables" ? "Bron: kolom H" : "Bron: kolom J"}
+                <Badge tone={invoiceLedgerView === "review" ? "warn" : invoiceLedgerView === "payables" ? "neutral" : "good"}>
+                  {invoiceLedgerView === "review" ? "Telt nog niet mee" : "Opgeslagen"}
                 </Badge>
               </div>
 
               <div className="ev-invoice-ledger-columns" aria-hidden="true">
-                <span>Relatie & factuur</span>
-                <span>Bedrag & deadline</span>
-                <span>Behandeling</span>
-                <span>Betaald</span>
-                <span>Bewijs</span>
+                <span>Relatie & factuur</span><span>Factuur & verval</span><span>Excl. & incl. btw</span><span>Controle</span><span>Betaald & btw</span><span>PDF</span>
               </div>
 
               <div className="ev-invoice-ledger-body">
-                {invoiceLedgerView === "payables" && filteredPayables.map(({ item, index }) => {
-                  const matchingDoc = invoiceDocs.find((doc) => doc.invoiceNumber === item.invoice || doc.linkedInvoice === item.invoice);
+                {invoiceLedgerItems.map((entry) => {
+                  const isPayable = entry.direction === "payable";
+                  const relation = isPayable ? entry.item.company : entry.item.client;
+                  const invoiceNumber = entry.item.invoice;
+                  const dueDate = isPayable ? entry.item.deadline : entry.item.dueDate;
+                  const invoiceDate = entry.item.invoiceDate || "";
+                  const amounts = invoiceAmounts(entry.item);
+                  const reviewStatus = invoiceReviewStatus(entry.item);
+                  const matchingDoc = invoiceDocs.find((doc) => entry.item.documentIds?.includes(doc.id) || doc.invoiceNumber === invoiceNumber || doc.linkedInvoice === invoiceNumber);
+                  const note = isPayable ? entry.item.note : entry.item.action;
                   return (
-                    <article className="ev-invoice-row" key={`${item.company}-${item.invoice}`}>
+                    <article className="ev-invoice-row" key={`${entry.direction}-${relation}-${invoiceNumber}`}>
                       <div className="ev-invoice-identity">
-                        <span className="ev-invoice-avatar"><Building2 size={17} /></span>
-                        <div>
-                          <strong>{item.company}</strong>
-                          <span>{item.invoice}</span>
-                          {item.note && <small title={item.note}>{item.note}</small>}
-                        </div>
+                        <span className="ev-invoice-avatar">{isPayable ? <Building2 size={17} /> : <UserRound size={17} />}</span>
+                        <div><strong>{relation}</strong><span>{invoiceNumber}</span>{note && <small title={note}>{note}</small>}</div>
                       </div>
-                      <div className="ev-invoice-money">
-                        <strong>{euro.format(item.amount)}</strong>
-                        <span><CalendarClock size={14} /> {item.deadline || "Geen deadline"}</span>
+                      <div className="ev-invoice-dates">
+                        <span><CalendarDays size={14} /> {invoiceDate || "Factuurdatum ontbreekt"}</span>
+                        <span><CalendarClock size={14} /> {dueDate || "Vervaldatum ontbreekt"}</span>
                       </div>
+                      <div className="ev-invoice-money"><strong>{euro.format(amounts.exVat)} excl.</strong><span>{euro.format(amounts.incVat)} incl. · btw {euro.format(amounts.vat)}</span></div>
                       <div className="ev-invoice-treatment">
-                        <Badge tone={statusTone(item.priority)}>{item.priority}</Badge>
-                        <Select
-                          aria-label={`Status ${item.company}`}
-                          value={item.status}
-                          onChange={(event) => setPayables((current) => updateIndex(current, index, { status: event.target.value }))}
-                        >
-                          <option>OPEN</option>
-                          <option>Open</option>
-                          <option>Betaald</option>
-                          <option>in behandeling</option>
+                        <Select aria-label={`Controle status ${relation}`} value={reviewStatus} onChange={(event) => {
+                          const next = event.target.value as InvoiceReviewStatus;
+                          if (next === reviewStatus) return;
+                          confirmReviewChange(`${relation} · ${invoiceNumber}`, next, () => {
+                            if (isPayable) setPayables((current) => updateIndex(current, entry.index, { reviewStatus: next }));
+                            else setReceivables((current) => updateIndex(current, entry.index, { reviewStatus: next }));
+                          });
+                        }}>
+                          <option>Controle</option><option>Goedgekeurd</option><option>Afgekeurd</option>
                         </Select>
                       </div>
-                      <div className="ev-invoice-paid">
-                        <small>Kolom H</small>
-                        <PaidSelect
-                          value={item.paid}
-                          onChange={(paid) => setPayables((current) => updateIndex(current, index, {
-                            paid,
-                            status: paid === "NEE" ? "OPEN" : "Betaald",
-                          }))}
-                        />
+                      <div className="ev-invoice-settlement">
+                        <PaidSelect value={entry.item.paid} onChange={(paid) => confirmPaidChange(`${relation} · ${invoiceNumber}`, entry.item.paid, paid, () => {
+                          if (isPayable) setPayables((current) => updateIndex(current, entry.index, { paid, status: paid === "JA" ? "Betaald" : "Open" }));
+                          else setReceivables((current) => updateIndex(current, entry.index, { paid, status: paid === "JA" ? "Betaald" : "Open" }));
+                        })} />
+                        {isPayable ? (
+                          <BooleanChoice label="Btw verrekenen" value={entry.item.vatReclaimable !== false} onChange={(value) => requestConfirmation(
+                            value ? "Btw verrekenen?" : "Btw niet verrekenen?",
+                            `${relation} · ${invoiceNumber}: weet je zeker dat de btw ${value ? "wel" : "niet"} aftrekbaar is?`,
+                            value ? "Ja, verrekenen" : "Ja, niet verrekenen",
+                            () => setPayables((current) => updateIndex(current, entry.index, { vatReclaimable: value })),
+                            value ? "default" : "danger",
+                          )} />
+                        ) : <small>Btw ontvangen {euro.format(amounts.vat)}</small>}
                       </div>
                       <div className="ev-invoice-document-action">
                         {matchingDoc ? (
-                          <Button variant="secondary" size="sm" onClick={() => {
-                            setSelectedDocId(matchingDoc.id);
-                            setTab("automation");
-                          }}>
-                            <Eye size={16} /> Dossier
-                          </Button>
+                          <Button variant="secondary" size="sm" onClick={() => setSelectedDocId(matchingDoc.id)}><Eye size={16} /> PDF bekijken</Button>
                         ) : (
-                          <Button variant="ghost" size="sm" onClick={() => {
-                            setNewDocument((current) => ({ ...current, type: "te-betalen", relation: item.company, invoiceNumber: item.invoice, amount: String(item.amount), dueDate: item.deadline }));
-                            setTab("automation");
-                          }}>
-                            <FilePlus2 size={16} /> PDF toevoegen
-                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => beginInvoiceUpload({
+                            type: isPayable ? "te-betalen" : "te-ontvangen",
+                            relation,
+                            invoiceNumber,
+                            amountExVat: String(amounts.exVat),
+                            amountIncVat: String(amounts.incVat),
+                            invoiceDate,
+                            dueDate,
+                            customerEmail: isPayable ? "" : entry.item.customerEmail || "",
+                          })}><FilePlus2 size={16} /> PDF toevoegen</Button>
                         )}
                       </div>
-                    </article>
-                  );
-                })}
-
-                {invoiceLedgerView === "receivables" && filteredReceivables.map(({ item, index }) => {
-                  const matchingDoc = invoiceDocs.find((doc) => doc.invoiceNumber === item.invoice || doc.linkedInvoice === item.invoice);
-                  return (
-                    <article className="ev-invoice-row" key={`${item.client}-${item.invoice}`}>
-                      <div className="ev-invoice-identity">
-                        <span className="ev-invoice-avatar"><UserRound size={17} /></span>
-                        <div>
-                          <strong>{item.client}</strong>
-                          <span>{item.invoice}</span>
-                          {item.action && <small title={item.action}>{item.action}</small>}
+                      <details className="ev-invoice-editor">
+                        <summary><Settings2 size={15} /> Gegevens aanpassen</summary>
+                        <div className="ev-invoice-editor-grid">
+                          <Field label={isPayable ? "Leverancier" : "Klant"}><Input value={relation} onChange={(event) => isPayable
+                            ? setPayables((current) => updateIndex(current, entry.index, { company: event.target.value }))
+                            : setReceivables((current) => updateIndex(current, entry.index, { client: event.target.value }))} /></Field>
+                          <Field label="Factuurnummer"><Input value={invoiceNumber} onChange={(event) => isPayable
+                            ? setPayables((current) => updateIndex(current, entry.index, { invoice: event.target.value }))
+                            : setReceivables((current) => updateIndex(current, entry.index, { invoice: event.target.value }))} /></Field>
+                          <Field label="Factuurdatum"><Input type="date" value={invoiceDate} onChange={(event) => isPayable
+                            ? setPayables((current) => updateIndex(current, entry.index, { invoiceDate: event.target.value }))
+                            : setReceivables((current) => updateIndex(current, entry.index, { invoiceDate: event.target.value }))} /></Field>
+                          <Field label="Vervaldatum"><Input type="date" value={/^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : ""} onChange={(event) => isPayable
+                            ? setPayables((current) => updateIndex(current, entry.index, { deadline: event.target.value }))
+                            : setReceivables((current) => updateIndex(current, entry.index, { dueDate: event.target.value }))} /></Field>
+                          <Field label="Bedrag excl. btw"><Input type="number" min="0" step="0.01" value={amounts.exVat} onChange={(event) => isPayable ? updatePayableAmount(entry.index, "ex", event.target.value) : updateReceivableAmount(entry.index, "ex", event.target.value)} /></Field>
+                          <Field label="Bedrag incl. btw"><Input type="number" min="0" step="0.01" value={amounts.incVat} onChange={(event) => isPayable ? updatePayableAmount(entry.index, "inc", event.target.value) : updateReceivableAmount(entry.index, "inc", event.target.value)} /></Field>
                         </div>
-                      </div>
-                      <div className="ev-invoice-money">
-                        <strong>{euro.format(item.amount)}</strong>
-                        <span><CalendarClock size={14} /> {item.dueDate || "Geen vervaldatum"}</span>
-                      </div>
-                      <div className="ev-invoice-treatment">
-                        <Badge tone={statusTone(item.status)}>{item.status}</Badge>
-                        <Select
-                          aria-label={`Status ${item.client}`}
-                          value={item.status}
-                          onChange={(event) => setReceivables((current) => updateIndex(current, index, { status: event.target.value }))}
-                        >
-                          <option>in behandeling</option>
-                          <option>Betaald</option>
-                          <option>Open</option>
-                        </Select>
-                      </div>
-                      <div className="ev-invoice-paid">
-                        <small>Kolom J</small>
-                        <PaidSelect
-                          value={item.paid}
-                          onChange={(paid) => setReceivables((current) => updateIndex(current, index, {
-                            paid,
-                            status: paid === "NEE" ? "in behandeling" : "Betaald",
-                          }))}
-                        />
-                      </div>
-                      <div className="ev-invoice-document-action">
-                        {matchingDoc ? (
-                          <Button variant="secondary" size="sm" onClick={() => {
-                            setSelectedDocId(matchingDoc.id);
-                            setTab("automation");
-                          }}>
-                            <Eye size={16} /> Dossier
-                          </Button>
-                        ) : (
-                          <Button variant="ghost" size="sm" onClick={() => {
-                            setNewDocument((current) => ({ ...current, type: "te-ontvangen", relation: item.client, invoiceNumber: item.invoice, amount: String(item.amount), dueDate: item.dueDate }));
-                            setTab("automation");
-                          }}>
-                            <FilePlus2 size={16} /> PDF toevoegen
-                          </Button>
-                        )}
-                      </div>
+                      </details>
                     </article>
                   );
                 })}
-
-                {((invoiceLedgerView === "payables" && !filteredPayables.length) ||
-                  (invoiceLedgerView === "receivables" && !filteredReceivables.length)) && (
-                  <div className="ev-invoice-empty">Geen facturen gevonden voor deze zoekopdracht.</div>
-                )}
+                {!invoiceLedgerItems.length && <div className="ev-invoice-empty">Geen facturen gevonden in deze weergave.</div>}
               </div>
 
-              <div className="ev-invoice-add">
-                <div className="ev-invoice-add-title">
-                  <Plus size={17} />
-                  <div>
-                    <strong>{invoiceLedgerView === "payables" ? "Nieuwe te betalen factuur" : "Nieuwe te ontvangen factuur"}</strong>
-                    <span>Voeg de basis toe; het bewijsstuk kan daarna worden gekoppeld.</span>
-                  </div>
+              {invoiceLedgerView !== "review" && (
+                <div className="ev-invoice-add">
+                  <div className="ev-invoice-add-title"><Plus size={17} /><div><strong>{invoiceLedgerView === "payables" ? "Handmatige inkoopfactuur" : "Nieuwe verkoopfactuur"}</strong><span>{invoiceLedgerView === "payables" ? "Noodinvoer naast de automatische mailboximport." : "Vul de basis in en koppel daarna direct de PDF."}</span></div></div>
+                  {invoiceLedgerView === "payables" ? (
+                    <div className="ev-invoice-add-fields">
+                      <Field label="Leverancier"><Input value={newPayable.company} onChange={(event) => setNewPayable((current) => ({ ...current, company: event.target.value }))} /></Field>
+                      <Field label="Factuurnummer"><Input value={newPayable.invoice} onChange={(event) => setNewPayable((current) => ({ ...current, invoice: event.target.value }))} /></Field>
+                      <Field label="Factuurdatum"><Input type="date" value={newPayable.invoiceDate} onChange={(event) => setNewPayable((current) => ({ ...current, invoiceDate: event.target.value }))} /></Field>
+                      <Field label="Vervaldatum"><Input type="date" value={newPayable.deadline} onChange={(event) => setNewPayable((current) => ({ ...current, deadline: event.target.value }))} /></Field>
+                      <Field label="Bedrag excl. btw"><Input type="number" min="0" step="0.01" value={newPayable.amountExVat} onChange={(event) => setNewPayable((current) => ({ ...current, amountExVat: event.target.value }))} /></Field>
+                      <Field label="Bedrag incl. btw"><Input type="number" min="0" step="0.01" value={newPayable.amountIncVat} onChange={(event) => setNewPayable((current) => ({ ...current, amountIncVat: event.target.value }))} /></Field>
+                      <Button variant="accent" onClick={addPayable}><Plus size={16} /> Toevoegen</Button>
+                    </div>
+                  ) : (
+                    <div className="ev-invoice-add-fields">
+                      <Field label="Klant"><Input value={newReceivable.client} onChange={(event) => setNewReceivable((current) => ({ ...current, client: event.target.value }))} /></Field>
+                      <Field label="Factuurnummer"><Input value={newReceivable.invoice} onChange={(event) => setNewReceivable((current) => ({ ...current, invoice: event.target.value }))} /></Field>
+                      <Field label="Factuurdatum"><Input type="date" value={newReceivable.invoiceDate} onChange={(event) => setNewReceivable((current) => ({ ...current, invoiceDate: event.target.value }))} /></Field>
+                      <Field label="Vervaldatum"><Input type="date" value={newReceivable.dueDate} onChange={(event) => setNewReceivable((current) => ({ ...current, dueDate: event.target.value }))} /></Field>
+                      <Field label="Bedrag excl. btw"><Input type="number" min="0" step="0.01" value={newReceivable.amountExVat} onChange={(event) => setNewReceivable((current) => ({ ...current, amountExVat: event.target.value }))} /></Field>
+                      <Field label="Bedrag incl. btw"><Input type="number" min="0" step="0.01" value={newReceivable.amountIncVat} onChange={(event) => setNewReceivable((current) => ({ ...current, amountIncVat: event.target.value }))} /></Field>
+                      <Button variant="accent" onClick={addReceivable}><Plus size={16} /> Toevoegen</Button>
+                      <Button variant="secondary" onClick={() => beginInvoiceUpload({ type: "te-ontvangen", relation: newReceivable.client || "Onbekende klant", invoiceNumber: newReceivable.invoice, amountExVat: newReceivable.amountExVat, amountIncVat: newReceivable.amountIncVat, invoiceDate: newReceivable.invoiceDate, dueDate: newReceivable.dueDate, customerEmail: "" })}><Upload size={16} /> PDF kiezen</Button>
+                    </div>
+                  )}
                 </div>
-                {invoiceLedgerView === "payables" ? (
-                  <div className="ev-invoice-add-fields">
-                    <Input value={newPayable.company} onChange={(event) => setNewPayable((current) => ({ ...current, company: event.target.value }))} placeholder="Leverancier" />
-                    <Input value={newPayable.invoice} onChange={(event) => setNewPayable((current) => ({ ...current, invoice: event.target.value }))} placeholder="Factuurnummer" />
-                    <Input type="number" step="0.01" value={newPayable.amount} onChange={(event) => setNewPayable((current) => ({ ...current, amount: event.target.value }))} placeholder="Bedrag" />
-                    <Input type="date" value={newPayable.deadline} onChange={(event) => setNewPayable((current) => ({ ...current, deadline: event.target.value }))} aria-label="Deadline" />
-                    <Button variant="accent" onClick={addPayable}><Plus size={16} /> Toevoegen</Button>
-                  </div>
-                ) : (
-                  <div className="ev-invoice-add-fields">
-                    <Input value={newReceivable.client} onChange={(event) => setNewReceivable((current) => ({ ...current, client: event.target.value }))} placeholder="Klant" />
-                    <Input value={newReceivable.invoice} onChange={(event) => setNewReceivable((current) => ({ ...current, invoice: event.target.value }))} placeholder="Factuurnummer" />
-                    <Input type="number" step="0.01" value={newReceivable.amount} onChange={(event) => setNewReceivable((current) => ({ ...current, amount: event.target.value }))} placeholder="Bedrag" />
-                    <Input type="date" value={newReceivable.dueDate} onChange={(event) => setNewReceivable((current) => ({ ...current, dueDate: event.target.value }))} aria-label="Vervaldatum" />
-                    <Button variant="accent" onClick={addReceivable}><Plus size={16} /> Toevoegen</Button>
-                  </div>
-                )}
-              </div>
+              )}
             </Card>
+
+            {selectedInvoicePreview && (
+              <Card className="ev-invoice-preview-panel">
+                <div className="ev-invoice-preview-head"><div><FileText size={18} /><div><h3>{selectedInvoicePreview.fileName}</h3><span>{selectedInvoicePreview.relation} · {selectedInvoicePreview.invoiceNumber}</span></div></div><button type="button" onClick={() => setSelectedDocId("")} aria-label="PDF-preview sluiten"><X size={18} /></button></div>
+                {selectedInvoicePreview.previewUrl ? <iframe title={selectedInvoicePreview.fileName} src={selectedInvoicePreview.previewUrl} className="ev-document-preview" /> : <div className="ev-document-empty-preview"><FileText size={24} /><strong>Preview wordt geladen</strong><span>Het PDF-bestand blijft veilig opgeslagen in het documentendossier.</span></div>}
+              </Card>
+            )}
           </section>
         )}
         {tab === "admin" && <PlatformAdminCenter bankImported={Boolean(clientProfile.lastBankUpload)} onOpenSetup={() => setTab("onboarding")} />}
@@ -3841,6 +4257,12 @@ function App() {
         onSkip={() => closeProductTour("skipped")}
         onFinish={() => closeProductTour("completed")}
       />
+      {confirmation && (
+        <ConfirmationDialog
+          request={confirmation}
+          onCancel={() => setConfirmation(null)}
+        />
+      )}
     </main>
   );
 }
@@ -4336,6 +4758,65 @@ function PaidSelect({
       >
         NEE
       </button>
+    </div>
+  );
+}
+
+function BooleanChoice({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="ev-boolean-choice">
+      <small>{label}</small>
+      <div className="ev-paid-toggle" role="group" aria-label={label}>
+        <button type="button" className={cn(value && "is-paid")} aria-pressed={value} onClick={() => onChange(true)}>JA</button>
+        <button type="button" className={cn(!value && "is-unpaid")} aria-pressed={!value} onClick={() => onChange(false)}>NEE</button>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmationDialog({
+  request,
+  onCancel,
+}: {
+  request: ConfirmationRequest;
+  onCancel: () => void;
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    cancelRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onCancel]);
+
+  return (
+    <div className="ev-confirmation-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onCancel();
+    }}>
+      <section className="ev-confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmation-title" aria-describedby="confirmation-message">
+        <div className={cn("ev-confirmation-icon", request.tone === "danger" && "is-danger")}>
+          {request.tone === "danger" ? <MessageSquareWarning size={21} /> : <ShieldCheck size={21} />}
+        </div>
+        <div>
+          <h2 id="confirmation-title">{request.title}</h2>
+          <p id="confirmation-message">{request.message}</p>
+        </div>
+        <div className="ev-confirmation-actions">
+          <Button ref={cancelRef} variant="secondary" onClick={onCancel}>Nee, annuleren</Button>
+          <Button variant={request.tone === "danger" ? "danger" : "accent"} onClick={request.onConfirm}>{request.confirmLabel}</Button>
+        </div>
+      </section>
     </div>
   );
 }

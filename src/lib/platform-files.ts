@@ -7,7 +7,12 @@ export type WorkspaceDocumentInput = {
   relation: string;
   invoiceNumber: string;
   amount: number;
+  amountExVat?: number;
+  vatAmount?: number;
+  amountIncVat?: number;
+  invoiceDate?: string;
   dueDate: string;
+  vatReclaimable?: boolean;
   customerEmail?: string;
   period?: string;
   gross?: number;
@@ -92,7 +97,12 @@ export async function uploadWorkspaceDocument(
     customer_email: input.customerEmail ?? "",
     invoice_number: input.invoiceNumber,
     amount: input.amount,
+    amount_ex_vat: input.amountExVat ?? 0,
+    vat_amount: input.vatAmount ?? 0,
+    amount_inc_vat: input.amountIncVat ?? input.amount,
+    invoice_date: input.invoiceDate ?? "",
     due_date: input.dueDate,
+    vat_reclaimable: input.vatReclaimable !== false,
     period: input.period ?? "",
     gross: input.gross ?? 0,
     net: input.net ?? 0,
@@ -176,6 +186,11 @@ export async function uploadWorkspaceDocument(
         relation_name: input.relation,
         invoice_number: input.invoiceNumber,
         amount: input.amount,
+        amount_ex_vat: input.amountExVat ?? null,
+        amount_inc_vat: input.amountIncVat ?? input.amount,
+        tax_amount: input.vatAmount ?? null,
+        vat_reclaimable: input.vatReclaimable !== false,
+        invoice_date: input.invoiceDate || null,
         due_date: input.dueDate || null,
         paid: paidDatabaseValue("NEE"),
         source_paid_field: "manual:NEE",
@@ -248,10 +263,15 @@ export async function syncWorkspaceInvoices(workspace: Workspace, payables: Paya
         relation_name: item.company,
         invoice_number: item.invoice,
         amount: item.amount,
+        amount_ex_vat: item.amountExVat ?? null,
+        amount_inc_vat: item.amountIncVat ?? item.amount,
+        tax_amount: item.vatAmount ?? null,
+        vat_reclaimable: item.vatReclaimable !== false,
+        invoice_date: /^\d{4}-\d{2}-\d{2}$/.test(item.invoiceDate ?? "") ? item.invoiceDate : null,
         due_date: /^\d{4}-\d{2}-\d{2}$/.test(item.deadline) ? item.deadline : null,
         paid: databasePaid(item.paid),
         source_paid_field: `ui/H:${item.paid}`,
-        status: item.paid === "JA" ? "paid" : item.status.toLowerCase().includes("afgekeurd") ? "rejected" : item.status.toLowerCase().includes("goedgekeurd") ? "approved" : "review_required",
+        status: item.reviewStatus === "Afgekeurd" ? "rejected" : item.reviewStatus === "Controle" ? "review_required" : item.paid === "JA" ? "paid" : "approved",
         priority: item.priority || "normal",
         notes: item.note,
       },
@@ -265,11 +285,15 @@ export async function syncWorkspaceInvoices(workspace: Workspace, payables: Paya
         relation_name: item.client,
         invoice_number: item.invoice,
         amount: item.amount,
+        amount_ex_vat: item.amountExVat ?? null,
+        amount_inc_vat: item.amountIncVat ?? item.amount,
+        tax_amount: item.vatAmount ?? null,
+        vat_reclaimable: false,
         invoice_date: /^\d{4}-\d{2}-\d{2}$/.test(item.invoiceDate) ? item.invoiceDate : null,
         due_date: /^\d{4}-\d{2}-\d{2}$/.test(item.dueDate) ? item.dueDate : null,
         paid: databasePaid(item.paid),
         source_paid_field: `ui/J:${item.paid}`,
-        status: item.paid === "JA" ? "paid" : item.status.toLowerCase().includes("afgekeurd") ? "rejected" : item.status.toLowerCase().includes("goedgekeurd") ? "approved" : "review_required",
+        status: item.reviewStatus === "Afgekeurd" ? "rejected" : item.reviewStatus === "Controle" ? "review_required" : item.paid === "JA" ? "paid" : "approved",
         priority: "normal",
         notes: item.action,
         extraction: { customer_email: item.customerEmail ?? "" },

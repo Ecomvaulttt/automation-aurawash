@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { decryptTokenPayload, encryptTokenPayload, refreshAuthorizationToken, tokenNeedsRefresh } from "./integration-oauth.mjs";
+import { extractDocumentText, extractInvoiceFields, extractPayrollFields } from "./document-extraction.mjs";
 
 const supportedFiles = /\.(pdf|png|jpe?g)$/i;
 
@@ -11,8 +12,8 @@ function hash(value) {
   return createHash("sha256").update(value).digest("hex").slice(0, 32);
 }
 
-export function classifyDocument(subject, fileName) {
-  const value = `${subject} ${fileName}`.toLowerCase();
+export function classifyDocument(subject, fileName, extractedText = "") {
+  const value = `${subject} ${fileName} ${extractedText.slice(0, 2_000)}`.toLowerCase();
   if (/loonstrook|salaris|payroll/.test(value)) return "loonstrook";
   if (/vaste.last|abonnement|subscription/.test(value)) return "vaste-last";
   if (/vf\d{4,}|verkoopfactuur|sales.invoice/.test(value)) return "te-ontvangen";
@@ -105,7 +106,8 @@ async function gmailDocuments(token, sinceDays) {
         mimeType: part.mimeType || "application/octet-stream",
         content: decodeBase64Url(attachment.data),
         subject,
-        sender,
+          sender,
+          senderEmail: sender.match(/<([^>]+)>/)?.[1] || "",
         receivedAt: new Date(Number(message.internalDate || Date.now())).toISOString(),
       });
     }
@@ -138,6 +140,7 @@ async function microsoftDocuments(token, sinceDays) {
         content: Buffer.from(attachment.contentBytes, "base64"),
         subject: message.subject || "",
         sender: message.from?.emailAddress?.name || message.from?.emailAddress?.address || "Onbekend",
+        senderEmail: message.from?.emailAddress?.address || "",
         receivedAt: message.receivedDateTime || new Date().toISOString(),
       });
     }
@@ -167,8 +170,40 @@ async function persistDocument(service, integration, document) {
   const storagePath = `${integration.organization_id}/${integration.location_id || "all"}/${month}/${id}-${safeName(document.fileName)}`;
   const uploaded = await service.storage.from("documents").upload(storagePath, document.content, { contentType: document.mimeType, upsert: false });
   if (uploaded.error) throw new Error("storage_upload_failed");
-  const type = classifyDocument(document.subject, document.fileName);
-  const invoiceNumber = extractInvoiceNumber(document.subject, document.fileName);
+  let extractedText = "";
+  try {
+    extractedText = await extractDocumentText(document.content, document.mimeType, document.fileName);
+  } catch {
+    extractedText = "";
+  }
+  const type = classifyDocument(document.subject, document.fileName, extractedText);
+  const fallbackInvoiceNumber = extractInvoiceNumber(document.subject, document.fileName);
+  const invoiceExtraction = type === "loonstrook"
+    ? null
+    : extractInvoiceFields(extractedText, { invoiceNumber: fallbackInvoiceNumber });
+  const payrollExtraction = type === "loonstrook"
+    ? extractPayrollFields(extractedText)
+    : null;
+  const invoiceNumber = invoiceExtraction?.invoiceNumber || payrollExtraction?.payrollNumber || fallbackInvoiceNumber;
+  const metadata = {
+    subject: document.subject,
+    sender: document.sender,
+    sender_email: document.senderEmail || "",
+    invoice_number: invoiceNumber,
+    invoice_date: invoiceExtraction?.invoiceDate || "",
+    due_date: invoiceExtraction?.dueDate || "",
+    amount: invoiceExtraction?.amountIncVat || 0,
+    amount_ex_vat: invoiceExtraction?.amountExVat || 0,
+    vat_amount: invoiceExtraction?.vatAmount || 0,
+    amount_inc_vat: invoiceExtraction?.amountIncVat || 0,
+    vat_reclaimable: type !== "te-ontvangen",
+    employee: payrollExtraction?.employee || "",
+    period: payrollExtraction?.period || "",
+    gross: payrollExtraction?.gross || 0,
+    net: payrollExtraction?.net || 0,
+    extraction_confidence: invoiceExtraction?.confidence ?? payrollExtraction?.confidence ?? 0,
+    extracted_text: (invoiceExtraction?.extractedText || payrollExtraction?.extractedText || "").slice(0, 8_000),
+  };
   const inserted = await service.from("documents").insert({
     id,
     organization_id: integration.organization_id,
@@ -182,27 +217,71 @@ async function persistDocument(service, integration, document) {
     source_external_id: sourceExternalId,
     status: "review_required",
     received_at: document.receivedAt,
-    metadata: { subject: document.subject, sender: document.sender, invoice_number: invoiceNumber },
+    metadata,
   });
   if (inserted.error) throw new Error("document_insert_failed");
-  if (type !== "loonstrook") {
+  if (type === "loonstrook") {
+    const employeeName = payrollExtraction?.employee || "";
+    const { data: employees } = await service.from("employees").select("id, full_name")
+      .eq("organization_id", integration.organization_id).eq("status", "active").is("deleted_at", null);
+    const normalizedName = employeeName.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const employee = (employees ?? []).find((item) => {
+      const candidate = String(item.full_name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return normalizedName && (candidate === normalizedName || candidate.includes(normalizedName) || normalizedName.includes(candidate));
+    });
+    if (employee && payrollExtraction?.period) {
+      const { data: existingPayroll } = await service.from("payroll_documents").select("id")
+        .eq("employee_id", employee.id).eq("period", payrollExtraction.period).is("deleted_at", null).maybeSingle();
+      const payrollValues = {
+        organization_id: integration.organization_id,
+        location_id: integration.location_id,
+        employee_id: employee.id,
+        document_id: id,
+        period: payrollExtraction.period,
+        gross: payrollExtraction.gross,
+        net: payrollExtraction.net,
+        status: "review",
+      };
+      if (existingPayroll) await service.from("payroll_documents").update(payrollValues).eq("id", existingPayroll.id);
+      else await service.from("payroll_documents").insert(payrollValues);
+    } else {
+      await service.from("action_items").insert({
+        organization_id: integration.organization_id,
+        location_id: integration.location_id,
+        title: "Loonstrook koppelen",
+        detail: `${document.fileName} kon niet automatisch aan een medewerker en maand worden gekoppeld.`,
+        entity_type: "document",
+        entity_id: id,
+        priority: "high",
+      });
+    }
+  } else {
     const direction = type === "te-ontvangen" ? "receivable" : "payable";
     const { data: existingInvoice } = await service.from("invoices").select("id").eq("organization_id", integration.organization_id)
-      .eq("direction", direction).ilike("relation_name", document.sender).ilike("invoice_number", invoiceNumber).eq("amount", 0).is("deleted_at", null).maybeSingle();
+      .eq("direction", direction).ilike("relation_name", document.sender).ilike("invoice_number", invoiceNumber)
+      .eq("amount", invoiceExtraction?.amountIncVat || 0).is("deleted_at", null).maybeSingle();
     const values = {
       organization_id: integration.organization_id,
       location_id: integration.location_id,
       direction,
       relation_name: document.sender,
       invoice_number: invoiceNumber,
-      amount: 0,
+      amount: invoiceExtraction?.amountIncVat || 0,
+      amount_ex_vat: invoiceExtraction?.amountExVat || 0,
+      amount_inc_vat: invoiceExtraction?.amountIncVat || 0,
+      tax_amount: invoiceExtraction?.vatAmount || 0,
+      vat_reclaimable: direction === "payable",
+      invoice_date: invoiceExtraction?.invoiceDate || null,
+      due_date: invoiceExtraction?.dueDate || null,
       paid: "no",
       source_paid_field: "email:NEE",
       status: "review_required",
       priority: "normal",
       document_id: id,
-      notes: "Automatisch uit gekoppelde inbox. Bedrag en vervaldatum controleren.",
-      extraction: { subject: document.subject, file_name: document.fileName },
+      notes: invoiceExtraction?.confidence === 100
+        ? "Automatisch uit gekoppelde inbox. Handmatige goedkeuring vereist."
+        : "Automatisch uit gekoppelde inbox. Ontbrekende velden aanvullen en controleren.",
+      extraction: { ...metadata, customer_email: direction === "receivable" ? document.senderEmail || "" : "" },
     };
     if (existingInvoice) await service.from("invoices").update(values).eq("id", existingInvoice.id);
     else await service.from("invoices").insert(values);

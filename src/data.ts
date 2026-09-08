@@ -34,10 +34,16 @@ export type TaxItem = {
 export type Payable = {
   company: string;
   invoice: string;
+  invoiceDate?: string;
   amount: number;
+  amountExVat?: number;
+  vatAmount?: number;
+  amountIncVat?: number;
   deadline: string;
   priority: string;
   status: string;
+  reviewStatus?: "Controle" | "Goedgekeurd" | "Afgekeurd";
+  vatReclaimable?: boolean;
   note: string;
   paid: string;
   documentIds?: string[];
@@ -47,9 +53,13 @@ export type Receivable = {
   client: string;
   invoice: string;
   amount: number;
+  amountExVat?: number;
+  vatAmount?: number;
+  amountIncVat?: number;
   invoiceDate: string;
   dueDate: string;
   status: string;
+  reviewStatus?: "Controle" | "Goedgekeurd" | "Afgekeurd";
   action: string;
   paid: string;
   customerEmail?: string;
@@ -86,8 +96,13 @@ export type InvoiceDocument = {
   fileName: string;
   mimeType: string;
   receivedAt: string;
+  invoiceDate?: string;
   dueDate: string;
   amount: number;
+  amountExVat?: number;
+  vatAmount?: number;
+  amountIncVat?: number;
+  vatReclaimable?: boolean;
   paid: "JA" | "NEE" | "JA (termijn)";
   status: "Nieuw" | "Controle" | "Goedgekeurd" | "Afgekeurd" | "Betaald" | "Niet betaald";
   category: string;

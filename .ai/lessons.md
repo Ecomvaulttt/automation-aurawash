@@ -41,3 +41,11 @@ Read at session start, after global lessons. These override/extend global. Add a
 - Rule: Laat brede werkruimtes pas naar meerdere kolommen schakelen als de daadwerkelijke contentruimte voldoende is; zet `min-width: 0` op alle gridkinderen en test met zijbalk op 1024, 1280 en mobiel.
 - Scope: project
 - Tags: #frontend #responsive #dashboard #qa
+
+## [2026-09-08] Financiele vergelijkingen gebruiken alleen brondata
+- Context: Het overzicht toonde een vorige-periodebalk die met een vaste vermenigvuldigingsfactor was afgeleid.
+- Mistake: Een visuele vergelijking leek echt, maar was niet gebaseerd op facturen of transacties.
+- Root cause: Presentatiedata en boekhoudkundige brondata waren niet strikt gescheiden.
+- Rule: Toon omzet-, kosten-, btw- en periodevergelijkingen uitsluitend uit opgeslagen bronrecords; gebruik nooit arbitraire percentages of vermenigvuldigingsfactoren voor financiele cijfers.
+- Scope: project
+- Tags: #facturen #data-integriteit #dashboard

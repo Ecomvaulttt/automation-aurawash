@@ -1,5 +1,6 @@
 import readXlsxFile, { CellValue, Sheet } from "read-excel-file/browser";
 import type { Balance, FixedCost, Payable, Receivable, Salary, TaxItem } from "../data";
+import { invoiceAmounts } from "./invoice-accounting";
 
 type NullableCellValue = CellValue | null | undefined;
 
@@ -122,21 +123,31 @@ export function parseAuraSheets(workbook: Sheet[]): AuraWorkbookImport {
 
   const payables = dataRows(worksheetByName(workbook, "Openstaande facturen"), 8)
     .filter((row) => text(row[0]))
-    .map((row) => ({
-      company: text(row[0]), invoice: text(row[1]), amount: numeric(row[2]), deadline: isoDate(row[3]),
-      priority: text(row[4]), status: text(row[5]), note: text(row[6]),
-      // Source of truth: workbook column H `Betaald?`.
-      paid: paidValue(row[7]),
-    }));
+    .map((row) => {
+      const amounts = invoiceAmounts({ amount: numeric(row[2]) });
+      return {
+        company: text(row[0]), invoice: text(row[1]), invoiceDate: "", amount: amounts.incVat,
+        amountExVat: amounts.exVat, vatAmount: amounts.vat, amountIncVat: amounts.incVat,
+        deadline: isoDate(row[3]), priority: text(row[4]), status: text(row[5]), reviewStatus: "Goedgekeurd" as const,
+        vatReclaimable: true, note: text(row[6]),
+        // Source of truth: workbook column H `Betaald?`.
+        paid: paidValue(row[7]),
+      };
+    });
 
   const receivables = dataRows(worksheetByName(workbook, "Te ontvangen facturen"), 10)
     .filter((row) => text(row[0]))
-    .map((row) => ({
-      client: text(row[0]), invoice: text(row[1]), amount: numeric(row[2]), invoiceDate: isoDate(row[3]),
-      dueDate: isoDate(row[4]), status: text(row[5]), action: text(row[6]),
-      // Source of truth: workbook column J `Beataald`.
-      paid: paidValue(row[9]),
-    }));
+    .map((row) => {
+      const amounts = invoiceAmounts({ amount: numeric(row[2]) });
+      return {
+        client: text(row[0]), invoice: text(row[1]), amount: amounts.incVat,
+        amountExVat: amounts.exVat, vatAmount: amounts.vat, amountIncVat: amounts.incVat,
+        invoiceDate: isoDate(row[3]), dueDate: isoDate(row[4]), status: text(row[5]), reviewStatus: "Goedgekeurd" as const,
+        action: text(row[6]),
+        // Source of truth: workbook column J `Beataald`.
+        paid: paidValue(row[9]),
+      };
+    });
 
   return { balances, salaries, taxes, fixedCosts, payables, receivables, warnings };
 }

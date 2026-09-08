@@ -4,6 +4,7 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ImapFlow } from "imapflow";
 import { createClient } from "@supabase/supabase-js";
+import { extractDocumentText, extractInvoiceFields, extractPayrollFields } from "../server/document-extraction.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outputPath = resolve(root, "automation/inbox-documents.json");
@@ -136,7 +137,7 @@ async function persistToPlatform(documents) {
       id: documentId,
       organization_id: organizationId,
       location_id: locationId,
-      document_type: document.type,
+      document_type: document.type === "loonstrook" ? "payroll" : document.type,
       file_name: document.fileName,
       storage_path: storagePath,
       mime_type: document.mimeType,
@@ -151,8 +152,19 @@ async function persistToPlatform(documents) {
         sender_email: document.senderEmail,
         message_uid: document.messageUid,
         invoice_number: document.invoiceNumber,
+        invoice_date: document.invoiceDate,
         due_date: document.dueDate,
         amount: document.amount,
+        amount_ex_vat: document.amountExVat,
+        vat_amount: document.vatAmount,
+        amount_inc_vat: document.amountIncVat,
+        vat_reclaimable: document.type !== "te-ontvangen",
+        employee: document.employee,
+        period: document.period,
+        gross: document.gross,
+        net: document.net,
+        extraction_confidence: document.extractionConfidence,
+        extracted_text: document.extractedText,
       },
     });
     if (insertedDocument.error) throw new Error(`Platform document insert failed for ${document.id}`);
@@ -176,7 +188,11 @@ async function persistToPlatform(documents) {
         relation_name: document.relation,
         invoice_number: document.invoiceNumber,
         amount: Number(document.amount || 0),
-        invoice_date: document.receivedAt || null,
+        amount_ex_vat: Number(document.amountExVat || 0),
+        amount_inc_vat: Number(document.amountIncVat || document.amount || 0),
+        tax_amount: Number(document.vatAmount || 0),
+        vat_reclaimable: direction === "payable",
+        invoice_date: document.invoiceDate || null,
         due_date: document.dueDate || null,
         paid: "no",
         source_paid_field: "email:NEE",
@@ -184,10 +200,34 @@ async function persistToPlatform(documents) {
         priority: "normal",
         document_id: documentId,
         notes: "Automatisch uit inbox; handmatige controle vereist.",
-        extraction: { subject: document.subject, file_name: document.fileName },
+        extraction: { subject: document.subject, file_name: document.fileName, extraction_confidence: document.extractionConfidence },
       };
       if (existingInvoice.data) await client.from("invoices").update(values).eq("id", existingInvoice.data.id);
       else await client.from("invoices").insert(values);
+    } else if (document.type === "loonstrook" && document.employee && document.period) {
+      const { data: employees } = await client.from("employees").select("id, full_name")
+        .eq("organization_id", organizationId).eq("status", "active").is("deleted_at", null);
+      const normalized = document.employee.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const employee = (employees ?? []).find((item) => {
+        const candidate = String(item.full_name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        return candidate === normalized || candidate.includes(normalized) || normalized.includes(candidate);
+      });
+      if (employee) {
+        const { data: existingPayroll } = await client.from("payroll_documents").select("id")
+          .eq("employee_id", employee.id).eq("period", document.period).is("deleted_at", null).maybeSingle();
+        const payrollValues = {
+          organization_id: organizationId,
+          location_id: locationId,
+          employee_id: employee.id,
+          document_id: documentId,
+          period: document.period,
+          gross: Number(document.gross || 0),
+          net: Number(document.net || 0),
+          status: "review",
+        };
+        if (existingPayroll) await client.from("payroll_documents").update(payrollValues).eq("id", existingPayroll.id);
+        else await client.from("payroll_documents").insert(payrollValues);
+      }
     }
     stored += 1;
   }
@@ -239,14 +279,24 @@ async function main() {
         const folder = join(documentRoot, month);
         await mkdir(folder, { recursive: true });
 
-        const invoiceNumber = extractInvoiceNumber(subject, fileName, bodyText);
         const relation = from?.name || from?.address || "Onbekend";
+        const downloaded = await client.download(message.uid, attachment.part, { uid: true });
+        const content = await streamToBuffer(downloaded.content);
+        let extractedText = "";
+        try {
+          extractedText = await extractDocumentText(content, attachment.mimeType, fileName);
+        } catch {
+          extractedText = "";
+        }
+
+        const type = classify(subject, fileName, extractedText);
+        const fallbackInvoiceNumber = extractInvoiceNumber(subject, fileName, extractedText);
+        const invoiceFields = type === "loonstrook" ? null : extractInvoiceFields(extractedText, { invoiceNumber: fallbackInvoiceNumber });
+        const payrollFields = type === "loonstrook" ? extractPayrollFields(extractedText) : null;
+        const invoiceNumber = invoiceFields?.invoiceNumber || payrollFields?.payrollNumber || fallbackInvoiceNumber;
         const targetName = safeName(`${receivedAt} ${relation} - ${invoiceNumber}${extname(fileName) || ".pdf"}`);
         const storagePath = join(folder, targetName);
-        const downloaded = await client.download(message.uid, attachment.part, { uid: true });
-        await writeFile(storagePath, await streamToBuffer(downloaded.content));
-
-        const type = classify(subject, fileName, bodyText);
+        await writeFile(storagePath, content);
         documents.push({
           id,
           type,
@@ -260,12 +310,21 @@ async function main() {
           fileName: targetName,
           mimeType: attachment.mimeType || "application/pdf",
           receivedAt,
-          dueDate: extractDate(bodyText),
-          amount: extractAmount(bodyText),
+          invoiceDate: invoiceFields?.invoiceDate || "",
+          dueDate: invoiceFields?.dueDate || "",
+          amount: invoiceFields?.amountIncVat || 0,
+          amountExVat: invoiceFields?.amountExVat || 0,
+          vatAmount: invoiceFields?.vatAmount || 0,
+          amountIncVat: invoiceFields?.amountIncVat || 0,
+          employee: payrollFields?.employee || "",
+          period: payrollFields?.period || "",
+          gross: payrollFields?.gross || 0,
+          net: payrollFields?.net || 0,
+          extractionConfidence: invoiceFields?.confidence ?? payrollFields?.confidence ?? 0,
           paid: "NEE",
           status: "Controle",
           category: type,
-          extractedText: bodyText.slice(0, 1200),
+          extractedText: extractedText.slice(0, 8_000),
           storagePath,
           linkedInvoice: invoiceNumber,
           messageUid: message.uid,
